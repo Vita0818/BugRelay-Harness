@@ -182,7 +182,7 @@ function renderTreeNodes(nodes) {
       toggle.textContent = "▸";
       row.classList.add("node-dir");
       row.appendChild(toggle);
-      row.appendChild(document.createTextNode("📁 " + n.name));
+      row.appendChild(document.createTextNode(n.name + "/"));
       const childUl = renderTreeNodes(n.children || []);
       childUl.style.display = "none";
       row.addEventListener("click", (ev) => {
@@ -198,7 +198,7 @@ function renderTreeNodes(nodes) {
     } else {
       toggle.textContent = "·";
       row.appendChild(toggle);
-      row.appendChild(document.createTextNode("📄 " + n.name));
+      row.appendChild(document.createTextNode(n.name));
       row.addEventListener("click", () => {
         document.querySelectorAll(".tree .node-row.selected").forEach((r) => r.classList.remove("selected"));
         row.classList.add("selected");
@@ -737,7 +737,6 @@ function el(tag, attrs = {}, text) {
 /* ---------------- 绑定与启动 ---------------- */
 
 window.addEventListener("DOMContentLoaded", () => {
-  $("btn-refresh").addEventListener("click", fullRefresh);
   $("btn-restore").addEventListener("click", restoreBackup);
   $("btn-draw").addEventListener("click", drawLots);
   $("btn-inject-rules").addEventListener("click", injectRules);

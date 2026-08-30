@@ -3,193 +3,105 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bug Relay — 接力赛控制台 / Relay Console</title>
+<title>Bug Relay — 接力赛控制台</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=11">
+<link rel="stylesheet" href="/static/style.css?v=12">
 </head>
 <body>
 
-<header id="top" class="topbar shell">
-  <div class="profile-copy">
-    <h1 class="brand">Bug Relay</h1>
-    <p class="brand-sub">AI 编程接力竞技 · 评测框架控制台 Relay console</p>
+<!-- 顶部一行：赛况 + 四步流程 + 主按钮 -->
+<header class="topbar">
+  <span class="brand">BUG RELAY</span>
+  <span class="now">第 <b id="st-round">–</b> 轮</span>
+  <b id="st-player" class="now-player">–</b>
+  <div id="steps" class="steps">
+    <span class="step" id="step-1"><i>1</i>作答</span>
+    <span class="step" id="step-2"><i>2</i>判定</span>
+    <span class="step" id="step-3"><i>3</i>出题</span>
+    <span class="step" id="step-4"><i>4</i>自证</span>
   </div>
-  <div class="topbar-actions">
-    <button id="btn-draw" class="btn">抽签顺序 / Draw</button>
-    <button id="btn-refresh" class="btn">刷新 / Refresh</button>
-    <button id="btn-restore" class="btn danger">还原到最近备份 / Restore</button>
-  </div>
+  <span class="meta">
+    存 <b id="st-survivors" class="ok">–</b>
+    <span class="sep">·</span> 淘 <b id="st-eliminated">–</b>
+    <span class="sep">·</span> <b id="st-arena" class="bad">arena</b>
+    <span id="st-rules" class="rules-dot" title="测试规范 TESTING_GUIDELINES.md 是否已注入 arena_repo"></span>
+    <span class="sep">·</span> <b id="st-last">–</b>
+  </span>
+  <span class="spacer"></span>
+  <button id="btn-draw" class="btn">抽签</button>
+  <button id="btn-restore" class="btn">还原</button>
 </header>
 
-<div class="shell">
-
-<!-- 顶部赛况 -->
-<section id="stats" class="stats" aria-label="赛况 / Match status">
-  <div class="stat"><label>轮次 Round</label><b id="st-round">–</b></div>
-  <div class="stat"><label>当前选手 Player</label><b id="st-player">–</b></div>
-  <div class="stat"><label>存活 Alive</label><b id="st-survivors">–</b></div>
-  <div class="stat"><label>淘汰 Out</label><b id="st-eliminated">–</b></div>
-  <div class="stat"><label>arena_repo</label><b id="st-arena">–</b></div>
-  <div class="stat"><label>规范 Rules</label><b id="st-rules" title="测试规范 TESTING_GUIDELINES.md 是否已注入 arena_repo">–</b></div>
-  <div class="stat"><label>最近结果 Last</label><b id="st-last">–</b></div>
-</section>
-
-<!-- 选手席：全部选手的存活/淘汰/当前状态；「编辑模型」用于模型迭代（只改括号内实际模型） -->
-<section class="roster" id="roster" aria-label="选手席 / Roster">
-  <div class="roster-bar">
-    <header class="section-heading">
-      <h3>选手席<span lang="en" id="roster-sub">Roster</span></h3>
-    </header>
-    <div class="roster-actions">
-      <button id="btn-edit-models" class="btn small">编辑模型 / Edit</button>
-      <button id="btn-models-save" class="btn small primary is-hidden">保存 / Save</button>
-      <button id="btn-models-cancel" class="btn small is-hidden">取消</button>
-    </div>
-  </div>
-  <div id="roster-grid" class="roster-grid"></div>
-  <div id="roster-msg" class="op-msg"></div>
-</section>
-
-<!-- 四步流程：作答 → 判定 → 出题 → 自证（每位选手每轮固定四步） -->
-<section class="stepper" id="stepper" aria-label="四步流程 / Four steps">
-  <article class="step" id="step-1">
-    <header class="step-head">
-      <span class="step-number" aria-hidden="true">1</span>
-      <h2 class="step-name">作答<span lang="en">Answer</span></h2>
-    </header>
-    <p class="step-desc">选手按上一棒需求改业务代码</p>
-    <div class="step-actor">等待 <code>inbox/answer</code> 投递</div>
-  </article>
-  <article class="step" id="step-2">
-    <header class="step-head">
-      <span class="step-number" aria-hidden="true">2</span>
-      <h2 class="step-name">判定<span lang="en">Judge</span></h2>
-    </header>
-    <p class="step-desc">历史+隐藏测试全绿则过，否则淘汰回滚</p>
-    <div class="step-actor">人类点「验收答题」</div>
-  </article>
-  <article class="step" id="step-3">
-    <header class="step-head">
-      <span class="step-number" aria-hidden="true">3</span>
-      <h2 class="step-name">出题<span lang="en">Propose</span></h2>
-    </header>
-    <p class="step-desc">交下一棒需求 + 本轮隐藏测试</p>
-    <div class="step-actor">等待 <code>inbox/next_prompt.md</code> 投递</div>
-  </article>
-  <article class="step" id="step-4">
-    <header class="step-head">
-      <span class="step-number" aria-hidden="true">4</span>
-      <h2 class="step-name">自证<span lang="en">Verify</span></h2>
-    </header>
-    <p class="step-desc">验题模型凭需求重实现，再被隐藏测试考核</p>
-    <div class="step-actor">人类点「校验出题并交棒」</div>
-  </article>
-</section>
-
-<div id="banner" class="banner hidden"></div>
-
-<!-- 战场区：三栏 -->
+<!-- 战场三栏（flex 撑满剩余高度） -->
 <main class="battle">
+
   <section class="col col-left">
-    <header class="section-heading">
-      <h3>arena_repo 文件树<span lang="en">File tree · read-only</span></h3>
-    </header>
+    <details id="roster" class="roster">
+      <summary>选手席<span id="roster-sub" class="roster-sub"></span>
+        <span class="roster-actions">
+          <button id="btn-edit-models" class="mini">编辑模型</button>
+          <button id="btn-models-save" class="mini dark is-hidden">保存</button>
+          <button id="btn-models-cancel" class="mini is-hidden">取消</button>
+        </span>
+      </summary>
+      <div id="roster-grid" class="roster-grid"></div>
+      <div id="roster-msg" class="op-msg"></div>
+    </details>
+    <div class="col-label">arena_repo</div>
     <div id="tree" class="tree"><div class="empty">加载中…</div></div>
-    <div class="fileview-wrap">
-      <div id="file-title" class="file-title">点击左侧文件查看内容</div>
-      <pre id="fileview" class="fileview"></pre>
-    </div>
+    <div id="file-title" class="file-title">点击文件查看</div>
+    <pre id="fileview" class="fileview"></pre>
   </section>
 
   <section class="col col-mid">
-    <header class="section-heading">
-      <h3>当前需求<span lang="en">next_prompt.md</span></h3>
-    </header>
+    <div class="col-label">当前需求 next_prompt.md</div>
     <pre id="prompt" class="prompt">等待首轮需求</pre>
   </section>
 
   <section class="col col-right">
-    <header class="section-heading">
-      <h3>实时日志<span lang="en">Live log · 最新在上</span></h3>
-    </header>
+    <div class="col-label">日志</div>
     <div id="log" class="log"><div class="empty">暂无日志</div></div>
   </section>
+
 </main>
 
-<!-- 操作区 -->
-<section class="ops">
-  <div class="op-card" id="op-answer">
-    <span class="card-group-label">答题区 / Answer submission</span>
-    <p class="hint">支持上传 .zip（建议为 business_dir 结构，或带 src/ 前缀）或多个业务文件/文件夹。内容只会应用到 arena_repo 的 <code>src/</code>，严禁包含 <code>tests/</code> 改动（自动拦截并判 FAIL）。也可免上传：让 Agent 把交付物按约定写入 <code>inbox/</code>（<code>answer.zip</code> 或 <code>answer/</code> 目录），直接点「验收答题」自动导入。</p>
-    <input type="file" id="answer-files" multiple
-           accept=".zip,.py,.txt,.json,.toml,.yaml,.yml,.cfg,.ini,.md,.sh,.js,.html,.css">
-    <div class="op-buttons">
-      <button id="btn-upload-answer" class="btn">上传答题文件</button>
-      <button id="btn-judge-answer" class="btn primary">验收答题 / Judge</button>
+<!-- 底部一行：测试计数 + 反馈 + 上传折叠 + 两个主按钮 -->
+<footer class="actionbar">
+  <span class="scores">
+    历史 <b id="t-history" class="badge">–</b> <span id="t-history-count" class="count"></span>
+    <span class="sep">·</span>
+    隐藏 <b id="t-hidden" class="badge">–</b> <span id="t-hidden-count" class="count"></span>
+  </span>
+  <span id="action-msgs">
+    <span id="answer-msg" class="op-msg"></span><span id="proposal-msg" class="op-msg"></span><span id="rules-msg" class="op-msg"></span>
+  </span>
+  <span class="spacer"></span>
+  <details class="upload">
+    <summary>手动上传</summary>
+    <div class="upload-pop">
+      <label>答题文件<input type="file" id="answer-files" multiple accept=".zip,.py,.txt,.json,.toml,.yaml,.yml,.cfg,.ini,.md,.sh,.js,.html,.css"></label>
+      <button id="btn-upload-answer" class="mini">上传答题</button>
+      <label>next_prompt.md<input type="file" id="proposal-prompt" accept=".md,.txt"></label>
+      <label>hidden_tests.py<input type="file" id="proposal-test" accept=".py"></label>
+      <button id="btn-upload-proposal" class="mini">上传出题材料</button>
+      <button id="btn-inject-rules" class="mini">重注入规范</button>
     </div>
-    <div id="answer-msg" class="op-msg"></div>
-  </div>
-
-  <div class="op-card" id="op-proposal">
-    <span class="card-group-label">出题区 / Proposal submission</span>
-    <p class="hint">每次出题只引入<b>一个</b>缺陷，hidden_tests.py 须<b>恰好 3 个</b>测试用例且全部针对同一问题（主路径 / 边界 / 回归防护），数量不符会被拒绝导入。也可免上传：让 Agent 把 <code>next_prompt.md</code> 与 <code>hidden_tests.py</code> 写入 <code>inbox/</code>，直接点「校验出题并交棒」自动导入。完整规范见 arena_repo 的 TESTING_GUIDELINES.md。</p>
-    <div class="form-row">
-      <label>需求文档 next_prompt.md</label>
-      <input type="file" id="proposal-prompt" accept=".md,.txt">
-    </div>
-    <div class="form-row">
-      <label>隐藏测试 hidden_tests.py</label>
-      <input type="file" id="proposal-test" accept=".py">
-    </div>
-    <div class="op-buttons">
-      <button id="btn-upload-proposal" class="btn">上传出题材料</button>
-      <button id="btn-judge-proposal" class="btn primary">校验出题并交棒 / Verify</button>
-    </div>
-    <div id="proposal-msg" class="op-msg"></div>
-  </div>
-
-  <div class="op-card" id="op-ops">
-    <span class="card-group-label">通用 / Utilities</span>
-    <p class="hint">测试规范会在 arena_repo 接入时自动写入 <code>TESTING_GUIDELINES.md</code>（选手打开仓库即可见，被删后自动补回）。需要立即重写入时点下面按钮。</p>
-    <div class="op-buttons">
-      <button id="btn-inject-rules" class="btn">重注入规范 / Rules</button>
-    </div>
-    <div id="rules-msg" class="op-msg"></div>
-  </div>
-</section>
-
-<!-- 底部测试结果：只显示总结果与计数 -->
-<section class="tests">
-  <header class="section-heading">
-    <h3>测试结果<span lang="en">Test results</span></h3>
-  </header>
-  <div class="test-row">
-    <span class="test-label">历史测试 History</span>
-    <span id="t-history" class="badge">–</span>
-    <span id="t-history-count" class="count"></span>
-  </div>
-  <div class="test-row">
-    <span class="test-label">隐藏测试 Hidden</span>
-    <span id="t-hidden" class="badge">–</span>
-    <span id="t-hidden-count" class="count"></span>
-  </div>
-  <p class="hint">只显示总结果与通过数/总数；测试函数名、断言内容与 diff 一律不展示。前端任何接口都不会返回 hidden_tests/ 内容。</p>
-</section>
-
-<footer class="footer">
-  Bug Relay harness · 框架不触碰 arena_repo 的业务逻辑，不自动生成业务代码，也永远不运行/观测任何选手 Agent —— 它只在人类点击按钮的瞬间工作。
+  </details>
+  <button id="btn-judge-answer" class="btn primary">验收答题</button>
+  <button id="btn-judge-proposal" class="btn primary">校验出题并交棒</button>
 </footer>
 
-</div><!-- /.shell -->
+<!-- 浮层横幅（不占布局空间） -->
+<div id="banner" class="banner hidden"></div>
 
 <!-- 抽签动画模态：滚动抽出 → 逐位锁定 → 完整顺序 -->
 <div id="draw-modal" class="draw-modal is-hidden" aria-hidden="true" role="dialog" aria-label="顺序抽签">
   <div class="draw-panel">
     <header class="draw-head">
       <h3>顺序抽签<span lang="en">Draw lots</span></h3>
-      <button id="btn-draw-skip" class="btn small">跳过动画 / Skip</button>
+      <button id="btn-draw-skip" class="btn small">跳过动画</button>
     </header>
     <div class="draw-stage">
       <div class="draw-pos-label">正在抽出 第 <span id="draw-pos-num">1</span> 位</div>
@@ -198,11 +110,11 @@
     </div>
     <div id="draw-result" class="draw-result" aria-live="polite"></div>
     <footer class="draw-foot">
-      <button id="btn-draw-close" class="btn primary is-hidden">完成 / Done</button>
+      <button id="btn-draw-close" class="btn primary is-hidden">完成</button>
     </footer>
   </div>
 </div>
 
-<script src="/static/main.js?v=11"></script>
+<script src="/static/main.js?v=12"></script>
 </body>
 </html>
