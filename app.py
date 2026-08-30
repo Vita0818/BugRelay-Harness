@@ -62,12 +62,18 @@ async def index() -> HTMLResponse:
 
 @app.get("/api/state")
 async def api_state():
-    """当前赛况（轮次/选手/存活/淘汰/arena_ready/最近结果等）+ inbox 材料就位情况。"""
+    """当前赛况（轮次/选手/存活/淘汰/arena_ready/最近结果等）+ inbox 材料就位情况。
+
+    step 为派生字段（四步流程：作答→判定→出题→自证）：
+    phase=answering -> step 1（等待作答材料）；phase=proposing -> step 3（等待出题材料）。
+    步骤 2/4 是按钮触发的瞬时评测动作，由前端在请求进行中本地高亮。
+    """
     try:
         ensure_dirs()
         repo_ops.refresh_arena_ready()
         state = load_state()
-        return {"ok": True, "state": state, "inbox": judge.inbox_status()}
+        step = 3 if state.get("phase") == "proposing" else 1
+        return {"ok": True, "state": state, "inbox": judge.inbox_status(), "step": step}
     except Exception as e:  # 任何异常都不让前端拿到 500 崩溃
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
 

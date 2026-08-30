@@ -20,11 +20,38 @@
 <section id="stats" class="stats">
   <div class="stat"><label>轮次</label><b id="st-round">–</b></div>
   <div class="stat"><label>当前选手</label><b id="st-player">–</b></div>
-  <div class="stat"><label>阶段</label><b id="st-phase" title="answering=等待验收答题；proposing=等待校验出题">–</b></div>
   <div class="stat"><label>存活</label><b id="st-survivors">–</b></div>
   <div class="stat"><label>淘汰</label><b id="st-eliminated">–</b></div>
   <div class="stat"><label>arena_repo</label><b id="st-arena">–</b></div>
   <div class="stat"><label>最近结果</label><b id="st-last">–</b></div>
+</section>
+
+<!-- 四步流程条：作答 → 判定 → 出题 → 自证（每位选手每轮固定四步） -->
+<section class="stepper" id="stepper">
+  <div class="step" id="step-1">
+    <div class="step-head"><span class="step-index">1</span><span class="step-name">作答</span></div>
+    <div class="step-desc">选手按上一棒需求改业务代码</div>
+    <div class="step-actor">等待 <code>inbox/answer</code> 投递</div>
+    <span class="step-arrow">→</span>
+  </div>
+  <div class="step" id="step-2">
+    <div class="step-head"><span class="step-index">2</span><span class="step-name">判定</span></div>
+    <div class="step-desc">历史+隐藏测试全绿则过，否则淘汰回滚</div>
+    <div class="step-actor">人类点「验收答题」</div>
+    <span class="step-arrow">→</span>
+  </div>
+  <div class="step" id="step-3">
+    <div class="step-head"><span class="step-index">3</span><span class="step-name">出题</span></div>
+    <div class="step-desc">交下一棒需求 + 本轮隐藏测试</div>
+    <div class="step-actor">等待 <code>inbox/next_prompt.md</code> 投递</div>
+    <span class="step-arrow">→</span>
+  </div>
+  <div class="step" id="step-4">
+    <div class="step-head"><span class="step-index">4</span><span class="step-name">自证</span></div>
+    <div class="step-desc">验题模型凭需求重实现，再被隐藏测试考核</div>
+    <div class="step-actor">人类点「校验出题并交棒」</div>
+    <span class="step-arrow"></span>
+  </div>
 </section>
 
 <div id="banner" class="banner hidden"></div>

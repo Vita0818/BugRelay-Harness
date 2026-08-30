@@ -20,6 +20,7 @@ const state = {
   selectedFile: null,
   pendingAnswer: null,
   pendingProposal: null,
+  runningStep: null,  // 评测运行中的步骤（2=判定，4=自证），本地状态
 };
 
 /* ---------------- 通用请求 ---------------- */
@@ -51,7 +52,7 @@ function hideBanner() {
 
 /* ---------------- 赛况渲染 ---------------- */
 
-function renderState(st, inbox) {
+function renderState(st, inbox, currentStep) {
   state.arenaReady = !!st.arena_ready;
   state.phase = st.phase;
   const inboxAnswer = inbox && inbox.answer;
@@ -59,10 +60,7 @@ function renderState(st, inbox) {
 
   $("st-round").textContent = st.round;
   $("st-player").textContent = st.current_player || "–";
-  const phaseMap = { answering: "答题中", proposing: "出题中" };
-  const phaseEl = $("st-phase");
-  phaseEl.textContent = phaseMap[st.phase] || st.phase || "–";
-  phaseEl.className = st.phase === "proposing" ? "warn" : "";
+  renderStepper(st, currentStep);
 
   $("st-survivors").textContent = (st.survivors || []).join(" ") || "（无）";
   $("st-survivors").className = (st.survivors || []).length ? "ok" : "bad";
@@ -228,6 +226,29 @@ async function loadFile(path, name) {
   }
 }
 
+/* ---------------- 四步流程条 ---------------- */
+
+function renderStepper(st, currentStep) {
+  // 当前所在步骤（等待材料的位置）：answering->1，proposing->3
+  const waiting = currentStep || (st.phase === "proposing" ? 3 : 1);
+  for (let n = 1; n <= 4; n++) {
+    const el = $("step-" + n);
+    let cls = "step";
+    if (state.runningStep === n) {
+      cls += " ongoing";        // 评测运行中（判定/自证）
+    } else if (n < waiting) {
+      cls += " done";           // 本轮已完成
+    } else if (n === waiting) {
+      cls += " active";         // 等待材料（当前）
+    }
+    el.className = cls;
+    // 淘汰/比赛结束时全部置灰，只保留历史完成态
+    if (st.status === "finished" && n === waiting) {
+      el.className = "step";
+    }
+  }
+}
+
 /* ---------------- 需求与日志 ---------------- */
 
 async function loadPrompt() {
@@ -279,7 +300,7 @@ async function loadLog() {
 async function refreshAll() {
   const data = await api("/api/state");
   if (data.ok) {
-    renderState(data.state || {}, data.inbox || {});
+    renderState(data.state || {}, data.inbox || {}, data.step || null);
   }
   loadLog();
 }
@@ -320,8 +341,11 @@ async function judgeAnswer() {
     return;
   }
   setMsg(msg, "评测中…（应用文件 → 运行 pytest，可能需要一些时间）");
+  state.runningStep = 2;  // 判定运行中
+  renderStepper(state, 3);
   $("btn-judge-answer").disabled = true;
   const data = await api("/api/judge-answer", { method: "POST" });
+  state.runningStep = null;
   if (data.ok) {
     const line = (data.result === "PASS") ? "✔ " : "✘ ";
     const h = data.history, d = data.hidden;
@@ -365,8 +389,11 @@ async function judgeProposal() {
     return;
   }
   setMsg(msg, "验题中…（复制 arena → 调用验题模型 → 运行 pytest，可能耗时较长）");
+  state.runningStep = 4;  // 自证运行中
+  renderStepper(state, 4);
   $("btn-judge-proposal").disabled = true;
   const data = await api("/api/judge-proposal", { method: "POST" });
+  state.runningStep = null;
   if (data.ok) {
     const line = (data.result === "PASS") ? "✔ " : "✘ ";
     let text = line + (data.message || data.result);

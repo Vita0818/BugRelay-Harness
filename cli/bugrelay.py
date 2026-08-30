@@ -53,6 +53,11 @@ def _bootstrap() -> None:
 # 子命令实现
 # ---------------------------------------------------------------------------
 
+def _step_label(state) -> str:
+    """四步流程（作答→判定→出题→自证）中当前所在步骤（等待材料的环节）。"""
+    return "3/4 出题（等待需求+隐藏测试）" if state.get("phase") == "proposing" else "1/4 作答（等待业务代码改动）"
+
+
 def cmd_status(_args) -> int:
     _bootstrap()
     state = load_state()
@@ -69,6 +74,7 @@ def cmd_status(_args) -> int:
         table.add_row("状态", str(state.get("status")))
         table.add_row("轮次", str(state.get("round")))
         table.add_row("当前选手", str(state.get("current_player")))
+        table.add_row("当前步骤", "作答→判定→出题→自证，当前：%s" % _step_label(state))
         table.add_row("阶段", "answering=待验收答题 / proposing=待校验出题 -> %s" % state.get("phase"))
         table.add_row("存活", ", ".join(state.get("survivors", [])) or "（无）")
         table.add_row("淘汰", ", ".join(state.get("eliminated", [])) or "（无）")
@@ -84,6 +90,7 @@ def cmd_status(_args) -> int:
         print("状态      : %s" % state.get("status"))
         print("轮次      : %s" % state.get("round"))
         print("当前选手  : %s" % state.get("current_player"))
+        print("当前步骤  : %s" % _step_label(state))
         print("阶段      : %s" % state.get("phase"))
         print("存活      : %s" % ", ".join(state.get("survivors", [])))
         print("淘汰      : %s" % (", ".join(state.get("eliminated", [])) or "（无）"))
