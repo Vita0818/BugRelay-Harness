@@ -106,7 +106,7 @@ Mimo 系），增删选手只需同步改 `order`、`survivors`、`players`、`s
 ### 5.1 首轮（人类准备）
 
 1. 人类另建独立 git 仓库 `arena_repo`（与 harness_repo 平级），含 `src/`（业务代码）与 `tests/`（初始历史测试，可为空目录）。**历史测试一旦存在即锁定。**
-2. 把首轮需求 `next_prompt.md` 放入 `prompts/`（任意文件名，如 `round_1.md`），首轮隐藏测试 `hidden_tests.py` 放入 `hidden_tests/`。
+2. 把首轮需求 `next_prompt.md` 放入 `prompts/`（任意文件名，如 `round_1.md`），首轮隐藏测试 `hidden_tests.py` 放入 `hidden_tests/`（同样须遵守「测试规范」，见第 9 节——首轮是历史测试之母，更要干净自包含）。
 3. 在 `state/match.json` 中把 `current_prompt_file` 设为该需求文件名（如 `"round_1"` 或 `"round_1.md"`，框架按文件名在 `prompts/` 下查找）。
    > 选手只能看到 `next_prompt.md`（Web 中栏完整展示），**永远看不到 hidden_tests/ 的任何内容**。
 4. **顺序抽签（每场开始）**：点控制台顶部「抽签顺序 / Draw」按钮（或 CLI `draw`、`POST /api/draw`），
@@ -222,7 +222,82 @@ harness_repo/
 
 `tmp/`（验题临时目录、上传暂存）为运行时按需创建，不在仓库中预置。
 
-## 9. 故障排查
+## 9. 测试规范（出题契约）
+
+出题人（选手/验题模型/首轮人类）提交的 `hidden_tests.py` 必须满足以下规范。
+**建议把本节原文直接粘进给出题选手的提示词**。违反阻断级规则的文件在导入时
+（Web 上传 / CLI load-proposal / inbox 拾取）会被静态闸门拒绝，不会浪费验题的模型调用。
+
+### 9.1 hidden_tests.py 写法（阻断级，机器校验）
+
+1. **单文件自包含**：一个 `hidden_tests.py` 就是全部。禁止引用 `tests/` 内其他模块
+   （`import tests...` / `from tests...`）、禁止相对导入（`from . / from ..`）——
+   验题时它会被**单独拷贝**到临时仓库，任何外部依赖都会挂。
+2. **不依赖 fixture / conftest**：conftest 属于历史测试，锁定不可改，出题人不能假设
+   它存在。数据在测试函数体内自行构造。
+3. **必须有真测试**：至少一个 `test_*` 函数（pytest 函数式风格），且含 `assert` /
+   `pytest.raises` 断言（无断言只警告，但"永真测试"骗不过验题，也对不起接力）。
+4. **语法必须合法**（废话，但 AI 常翻车）。
+
+### 9.2 稳定性要求（强烈建议，无法静态校验）
+
+- **确定性**：同一份代码跑两遍结果必须一致——不用随机（必须用就固定 seed）、
+  不依赖当前时间/时区、不依赖字典遍历顺序。
+- **无外部依赖**：不访问网络、不读写仓库外文件、不启动进程/端口。
+- **限时**：全部测试须在 pytest 超时预算内跑完（框架设了全局超时，超时直接判 FAIL），
+  单个用例建议 < 1 秒。
+- **彼此独立**：不依赖执行顺序，不共享可变全局状态。
+
+### 9.3 导入被测代码（唯一正确姿势）
+
+框架把 arena_repo 根目录加入 `PYTHONPATH` 后在**仓库根目录**运行 pytest。业务代码在
+`src/`（`business_dir` 可配），因此导入一律用包路径前缀：
+
+```python
+from src.kv import KVStore          # src/kv.py
+from src.storage.json_db import DB  # src/storage/json_db.py
+```
+
+不要 `import kv`（找不到）、不要 `sys.path.insert(...)`（画蛇添足）、不要修改
+`conftest.py`/`pytest.ini`（tests/ 锁定，改了判篡改）。
+
+### 9.4 测试数据从哪来（"去哪里找数据"）
+
+**全部内联在测试文件里**——这是本赛制的硬约束：hidden_tests.py 是单文件交付物，
+不能附带数据文件；arena_repo 也不预置业务数据（业务代码本身就是各选手写的）。
+
+```python
+def test_kv_roundtrip():
+    kv = KVStore()
+    kv.put("用户A", {"score": 100, "tags": ["new", "vip"]})
+    assert kv.get("用户A") == {"score": 100, "tags": ["new", "vip"]}
+
+def test_empty_and_missing():
+    kv = KVStore()
+    assert kv.get("不存在") is None
+    kv.delete("不存在")            # 幂等删除，不应抛错
+```
+
+出题思路：**用"构造数据 + 断言行为"代替"加载现成数据"**。边界值、空态、异常路径
+都是好题；纯正常路径的题太弱，验题模型一遍就能过。
+
+### 9.5 框架执行规范（跑测试的机器行为）
+
+| 项 | 规则 |
+| --- | --- |
+| 命令 | `<python> -m pytest <pytest_args> --junitxml=<tmp> -o junit_family=legacy --tb=short -p no:cacheprovider` |
+| 工作目录 | 目标仓库根（arena 或临时验题仓库） |
+| 发现范围 | pytest 默认规则：`test_*.py` / `*_test.py`；`tests/` 不存在时当作 0 个历史测试 |
+| PYTHONPATH | 目标仓库根 → `from src...` 直接可用 |
+| 隐藏测试注入 | 验收/验题前拷贝到 `<repo>/tests/hidden_tests.py`，与历史测试同场运行 |
+| 全绿判定 | pytest exit_code == 0 **且** total > 0（exit 5"没收集到测试"不算绿） |
+| 计数 | junit XML 按文件分类：`hidden_tests.py` 的算隐藏，其余算历史；前端只见通过数/总数 |
+| 超时 | 全局 pytest 超时（`PYTEST_TIMEOUT_SECONDS`），超时直接判 FAIL |
+| 历史测试保护 | 应用答题前后 git 快照比对 `tests/`，有改动即判"篡改历史测试"并回滚 |
+
+
+
+## 10. 故障排查
 
 - **arena_repo 不存在**：页面顶部与文件树区会提示"arena_repo 未就绪"；确认 `config.json`
   的 `arena_repo_path`（或环境变量 `BUGRELAY_ARENA_REPO`）指向已存在的独立 git 仓库后点「刷新」。路径非法（指向 harness 自身或其
@@ -238,7 +313,7 @@ harness_repo/
 - **backups/ 增长**：每次验收都会全量备份 arena_repo；可手动删除旧备份目录并同步
   从 `backups/index.json` 移除对应登记项。
 
-## 10. 边界声明
+## 11. 边界声明
 
 - 本框架仓库**不包含任何被评测的业务代码**，也不生成 demo 业务数据；
 - 框架**不创建** arena_repo（由人类另建），只在人类触发评测时对既有仓库做

@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -384,8 +385,87 @@ def import_answer(path_str: str) -> Dict:
     return {"ok": True, "pending": str(pending), "message": "已导入答题材料: %s" % pending.name}
 
 
+def lint_hidden_test(py_path: str | Path) -> Dict:
+    """隐藏测试静态闸门（出题规范【README「测试规范」】的机器校验）。
+
+    阻断级（任一命中即拒绝导入，不进入验题——省模型调用）：
+    1. 语法错误（ast 解析失败）；
+    2. 没有任何 test_* 测试函数/类（pytest 收集不到，全绿判定 total=0 必 FAIL）；
+    3. 依赖 tests/ 内其他模块：import tests / from tests ...；
+    4. 相对导入（from . / from ..）：验题时单文件拷贝到临时仓库，相对导入必挂；
+    5. 依赖 conftest fixture：调用无默认值的 @pytest.fixture 函数
+       （conftest 属于历史测试，锁定不可改，出题人不能假设它存在）。
+
+    警告级（只写日志提示，不阻断）：
+    - test_* 函数体内没有任何 assert / pytest.raises / pytest.warns —— 可能没做真断言。
+    """
+    path = Path(py_path)
+    errors: List[str] = []
+    warnings: List[str] = []
+    try:
+        source = path.read_text(encoding="utf-8")
+    except Exception as e:
+        return {"ok": False, "errors": ["测试文件读取失败: %s" % e], "warnings": []}
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as e:
+        return {"ok": False, "errors": ["语法错误（第 %d 行）: %s" % (e.lineno or 0, e.msg)],
+                "warnings": []}
+
+    fixture_names: set = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            for dec in node.decorator_list:
+                d = ast.unparse(dec) if hasattr(ast, "unparse") else ""
+                if "fixture" in d:
+                    fixture_names.add(node.name)
+
+    test_count = 0
+    for node in ast.walk(tree):
+        # 规则 3/4：import 检查
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "tests" or alias.name.startswith("tests."):
+                    errors.append("禁止依赖 tests/ 历史测试模块: import %s" % alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if node.level > 0:
+                errors.append("禁止相对导入（验题为单文件拷贝，from . / from .. 必失败）")
+            elif mod == "tests" or mod.startswith("tests."):
+                errors.append("禁止依赖 tests/ 历史测试模块: from %s import ..." % mod)
+        # 规则 2：收集测试函数
+        elif isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+            test_count += 1
+            # 警告级：无断言
+            has_assert = any(
+                isinstance(k, (ast.Assert,)) or
+                (isinstance(k, ast.Call) and isinstance(k.func, ast.Attribute)
+                 and isinstance(k.func.value, ast.Name) and k.func.value.id == "pytest"
+                 and k.func.attr in ("raises", "warns"))
+                for k in ast.walk(node))
+            if not has_assert:
+                warnings.append("%s 内未见 assert/pytest.raises，请确认有真断言" % node.name)
+            # 规则 5：fixture 依赖（参数注入是 pytest 的真实通道；conftest/fixture
+            # 属历史测试锁定不可改，出题测试必须自包含）
+            for arg in list(node.args.posonlyargs) + list(node.args.args):
+                if arg.arg in fixture_names and arg.arg not in ("self", "cls"):
+                    errors.append("%s 依赖 fixture %s（fixture/conftest 属历史测试锁定不可改，"
+                                  "出题测试必须自包含，请在函数内构造数据）" % (node.name, arg.arg))
+            for k in ast.walk(node):
+                if isinstance(k, ast.Call) and isinstance(k.func, ast.Name) \
+                        and k.func.id in fixture_names:
+                    errors.append("%s 依赖 fixture %s()（同上，出题测试必须自包含）"
+                                  % (node.name, k.func.id))
+    if test_count == 0:
+        errors.append("文件中没有任何 test_* 函数（pytest 收集不到测试，全绿判定必 FAIL）")
+    return {"ok": not errors, "errors": errors, "warnings": warnings}
+
+
 def import_proposal(prompt_file: str, test_file: str) -> Dict:
-    """导入出题材料（等同 POST /api/proposal）：next_prompt.md + hidden_tests.py。"""
+    """导入出题材料（等同 POST /api/proposal）：next_prompt.md + hidden_tests.py。
+
+    先过 lint_hidden_test 静态闸门（出题规范），不合规直接拒绝导入
+    （不进入验题流程，避免浪费单次模型调用）。"""
     pf, tf = Path(prompt_file), Path(test_file)
     if not pf.exists() or not tf.exists():
         return {"ok": False, "error": "需求文档或隐藏测试文件不存在"}
@@ -397,6 +477,15 @@ def import_proposal(prompt_file: str, test_file: str) -> Dict:
         return {"ok": False, "error": "需求文档为空"}
     if tf.suffix.lower() != ".py":
         return {"ok": False, "error": "隐藏测试必须是 .py 文件"}
+
+    lint = lint_hidden_test(tf)
+    if not lint["ok"]:
+        return {"ok": False, "error": "隐藏测试不合规，已拒绝导入：" +
+                "；".join(lint["errors"]) +
+                "（规范见 README「测试规范」：单文件自包含、仅标准库+被测代码依赖、"
+                "数据内联在测试内）"}
+    if lint["warnings"]:
+        log_event("lint-warn", "隐藏测试警告：" + "；".join(lint["warnings"]))
 
     stage = UPLOADS_DIR / ("proposal_%s" % uuid.uuid4().hex[:8])
     stage.mkdir(parents=True, exist_ok=True)
@@ -411,7 +500,8 @@ def import_proposal(prompt_file: str, test_file: str) -> Dict:
     log_event("import-proposal", "导入出题材料（需求文档 + 隐藏测试）",
               player=state.get("current_player"), round_=state.get("round"))
     return {"ok": True, "pending": state["pending_proposal"],
-            "message": "已导入出题材料（需求 + 隐藏测试），等待校验"}
+            "message": "已导入出题材料（需求 + 隐藏测试），等待校验"
+                       + ("（警告：%s）" % "；".join(lint["warnings"]) if lint["warnings"] else "")}
 
 
 # ---------------------------------------------------------------------------
