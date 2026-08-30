@@ -6,8 +6,9 @@
     python -m cli.bugrelay load-answer <path>           # 导入答题文件（zip/目录/单文件）
     python -m cli.bugrelay judge-answer                 # 验收答题
     python -m cli.bugrelay load-proposal <md> <py>      # 导入出题材料
-    python -m cli.bugrelay judge-proposal               # 校验出题并交棒
-    python -m cli.bugrelay restore                      # 还原最近备份
+    python -m cli.bugrelay judge-proposal              # 校验出题并交棒
+    python -m cli.bugrelay restore                     # 还原最近备份
+    python -m cli.bugrelay set-model FBL "Claude 5.5"  # 更新选手实际模型（模型迭代）
 
 说明：
 - 与 Web 共用 core/ 函数，操作结果一致；
@@ -26,7 +27,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from core import judge, repo_ops          # noqa: E402
-from core.utils import ensure_dirs, load_state  # noqa: E402
+from core.utils import ensure_dirs, load_state, set_player_models  # noqa: E402
 
 try:  # rich 可选，仅美化 CLI 输出
     from rich.console import Console
@@ -114,6 +115,19 @@ def cmd_status(_args) -> int:
         print("当前需求  : %s" % (state.get("current_prompt_file") or "（等待首轮需求）"))
         print("最近结果  : %s" % state.get("last_result"))
         print("说明      : %s" % (state.get("last_action_msg") or ""))
+    return 0
+
+
+def cmd_set_model(args) -> int:
+    """更新选手实际模型（等同 /api/set-model；三字码/总称/历史记录不变）。"""
+    _bootstrap()
+    try:
+        st = set_player_models({args.code: args.model})
+    except ValueError as e:
+        _print("更新失败：%s" % e)
+        return 1
+    info = (st.get("players") or {}).get(args.code) or {}
+    _print("已更新：%s · %s（%s）" % (args.code, info.get("name", ""), info.get("model", "")))
     return 0
 
 
@@ -216,6 +230,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_restore = sub.add_parser("restore", help="还原 arena_repo 到最近备份（等同 /api/restore）")
     p_restore.set_defaults(func=cmd_restore)
+
+    p_model = sub.add_parser(
+        "set-model", help="更新选手实际模型（等同 /api/set-model；模型迭代用，部署后无需改文件）")
+    p_model.add_argument("code", help="选手三字码，如 FBL")
+    p_model.add_argument("model", help="新的实际模型名，如 'Claude Fable 5.5'")
+    p_model.set_defaults(func=cmd_set_model)
 
     return parser
 

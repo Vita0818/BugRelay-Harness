@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from core import judge, repo_ops
 from core.utils import (
     BASE_DIR, UPLOADS_DIR, ensure_dirs, load_state, log_event, read_log,
-    resolve_path,
+    resolve_path, set_player_models,
 )
 
 
@@ -226,5 +226,28 @@ async def api_restore():
     try:
         result = await asyncio.to_thread(judge.restore_arena)
         return result
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
+
+
+# ---------------------------------------------------------------------------
+# 运维接口（选手元数据维护；与 arena_repo 无关，arena 未就绪时同样可用）
+# ---------------------------------------------------------------------------
+
+@app.post("/api/set-model")
+async def api_set_model(payload: dict):
+    """批量更新选手"实际模型"（模型迭代用；三字码/总称/历史记录不变）。
+
+    请求体：{"updates": {"FBL": "Claude Fable 5.5", ...}}，键必须是已存在的三字码。
+    校验失败整体拒绝（不做半截更新）；成功返回最新 state。
+    """
+    try:
+        updates = (payload or {}).get("updates")
+        if not isinstance(updates, dict) or not updates:
+            return {"ok": False, "error": "请求体需为 {\"updates\": {\"三字码\": \"新模型名\"}}"}
+        state = set_player_models(updates)
+        return {"ok": True, "state": state, "count": len(updates)}
+    except ValueError as e:  # 校验失败（未知三字码/空模型名）
+        return {"ok": False, "error": str(e)}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)

@@ -76,6 +76,11 @@ uvicorn app:app --host 127.0.0.1 --port 8080
 - `players`：三字码 → `{ "name": 总称, "model": 实际模型 }` 的映射，控制台选手席与 CLI
   显示总称，悬停/括号内显示实际模型。模型迭代时只改 `model` 字段，三字码与历史记录不变。
 
+**模型迭代（部署后不改文件）**：控制台选手席右上角「编辑模型」进入批量编辑（回车保存、
+Esc 取消），或 CLI `python -m cli.bugrelay set-model <三字码> "<新实际模型名>"`，
+或 `POST /api/set-model`（`{"updates": {"FBL": "..."}}`，支持一次改多个）。三种入口
+只改 `players.<三字码>.model`，其余一概不动，并写入 `set-model` 日志留痕。
+
 当前阵容 32 位（Claude 系 / GPT 系 / Gemini 系 / Grok / Muse 系 / Nemotron / Mistral /
 DeepSeek 系 / GLM 系 / Kimi / MiniMax / Qwen 系 / Hunyuan / Seed 系 / LongCat / StepFun /
 Mimo 系），增删选手只需同步改 `order`、`survivors`、`players`、`scores` 四处。
@@ -152,6 +157,7 @@ python -m cli.bugrelay judge-answer                    # 验收答题（inbox/ �
 python -m cli.bugrelay load-proposal <md> <py>         # 导入出题材料
 python -m cli.bugrelay judge-proposal                  # 校验出题并交棒（inbox/ 有材料时自动拾取）
 python -m cli.bugrelay restore                         # 还原最近备份
+python -m cli.bugrelay set-model FBL "Claude Fable 5.5" # 模型迭代：更新选手实际模型
 python -m cli.bugrelay web                             # 启动 Web
 ```
 
@@ -171,6 +177,7 @@ python -m cli.bugrelay web                             # 启动 Web
 | POST | `/api/proposal` | 上传 next_prompt.md + hidden_tests.py |
 | POST | `/api/judge-proposal` | 校验出题并交棒 |
 | POST | `/api/restore` | 还原最近备份 |
+| POST | `/api/set-model` | 批量更新选手实际模型 `{"updates": {三字码: 新模型名}}`（模型迭代；arena 未就绪也可用） |
 
 安全约定：**前端任何接口都不返回 hidden_tests/ 内容**；测试结果只显示总结果与
 通过数/总数，测试函数名、断言内容、diff 一律不展示（pytest 原始输出只留在服务端终端供人类排障）。

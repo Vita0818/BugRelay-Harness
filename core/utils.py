@@ -156,6 +156,37 @@ def save_state(state: Dict[str, Any]) -> None:
         os.replace(tmp, sp)
 
 
+def set_player_models(updates: Dict[str, str]) -> Dict[str, Any]:
+    """批量更新选手"实际模型"名称（模型迭代时用；Web/CLI 共用）。
+
+    - updates：{三字码: 新实际模型名}，如 {"FBL": "Claude Fable 5.5"}；
+    - 只改 state.players.<三字码>.model；三字码、总称（name）、积分/淘汰/日志等
+      历史记录一概不动（这正是用三字码做主键的意义）；
+    - 校验：三字码必须已存在于 players，模型名必须非空；任一非法则整体抛
+      ValueError（不做半截更新）；成功后写 set-model 日志，返回更新后的 state。
+    """
+    state = load_state()
+    players = state.get("players") or {}
+    problems: List[str] = []
+    for code, model in (updates or {}).items():
+        if not isinstance(model, str) or not model.strip():
+            problems.append("%s：模型名不能为空" % code)
+        elif code not in players:
+            problems.append("未知选手三字码：%s" % code)
+    if problems:
+        raise ValueError("；".join(problems))
+    changed: List[str] = []
+    for code, model in updates.items():
+        old = (players.get(code) or {}).get("model") or "（空）"
+        new = model.strip()
+        players[code]["model"] = new
+        changed.append("%s %s → %s" % (code, old, new))
+    state["players"] = players
+    save_state(state)
+    log_event("set-model", "更新选手实际模型：" + "；".join(changed))
+    return state
+
+
 def log_file_path() -> Path:
     return state_file_path().parent / "log.jsonl"
 

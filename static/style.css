@@ -212,6 +212,40 @@ code {
 .chip.out:hover { box-shadow: none; }
 .chip.out .chip-code { text-decoration: line-through; text-decoration-thickness: 1.5px; }
 
+/* 选手席顶栏（标题 + 编辑模型按钮组） */
+.roster-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+.roster-bar .section-heading { margin: 0; }
+.roster-actions { display: flex; gap: 0.5rem; flex: none; padding-top: 0.1rem; }
+.roster-grid { margin-top: 0.9rem; }
+
+/* 小号按钮（roster 顶栏用） */
+.btn.small { padding: 0.32rem 0.75rem; font-size: 0.74rem; border-radius: 0.55rem; }
+
+.is-hidden { display: none !important; }
+
+/* 编辑模式：每张卡片一个"实际模型"输入框（黑白灰语言：聚焦黑边） */
+.chip-model-input {
+  width: 100%;
+  margin-top: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  padding: 0.28rem 0.45rem;
+}
+.chip-model-input:focus { outline: none; border-color: var(--foreground); }
+.chip.current .chip-model-input { border-color: #4d4d4d; color: var(--background); background: #262626; }
+.chip.current .chip-model-input:focus { border-color: var(--background); }
+
 /* ---------- 四步流程（focus-card 语言：大编号 + 双语标题） ---------- */
 .stepper {
   display: grid;

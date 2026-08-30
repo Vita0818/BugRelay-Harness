@@ -21,6 +21,9 @@ const state = {
   pendingAnswer: null,
   pendingProposal: null,
   runningStep: null,  // 评测运行中的步骤（2=判定，4=自证），本地状态
+  lastState: null,      // 最近一次 /api/state 返回的 state（进入模型编辑时用）
+  editingModels: false, // 模型编辑模式：轮询期间不重绘选手席，避免 3 秒清空输入
+  modelOrig: {},        // 编辑模式的原始模型名 {三字码: model}，保存时求差集
 };
 
 /* ---------------- 通用请求 ---------------- */
@@ -55,6 +58,7 @@ function hideBanner() {
 function renderState(st, inbox, currentStep) {
   state.arenaReady = !!st.arena_ready;
   state.phase = st.phase;
+  state.lastState = st;
   const inboxAnswer = inbox && inbox.answer;
   const inboxProposal = inbox && inbox.proposal;
 
@@ -248,6 +252,7 @@ async function loadFile(path, name) {
 function renderRoster(st) {
   const grid = $("roster-grid");
   if (!grid) { return; }
+  if (state.editingModels) { return; } // 编辑中不重绘：3 秒轮询不能清空输入框
   grid.innerHTML = "";
   const players = st.players || {};
   const order = st.order && st.order.length ? st.order : (st.survivors || []);
@@ -277,6 +282,103 @@ function renderRoster(st) {
   const sub = $("roster-sub");
   if (sub) {
     sub.textContent = "Roster · " + order.length + " · alive " + survivors.length;
+  }
+}
+
+/* ---------------- 选手实际模型编辑（模型迭代；三字码/总称/历史记录不变） ---------------- */
+
+function enterModelEdit() {
+  const st = state.lastState;
+  if (!st) { return; }
+  state.editingModels = true;
+  state.modelOrig = {};
+  const players = st.players || {};
+  const order = st.order && st.order.length ? st.order : (st.survivors || []);
+  const eliminated = st.eliminated || [];
+  const grid = $("roster-grid");
+  grid.innerHTML = "";
+  for (const code of order) {
+    const info = players[code] || {};
+    state.modelOrig[code] = info.model || "";
+    const cls = ["chip"];
+    if (code === st.current_player && st.status !== "finished") { cls.push("current"); }
+    if (eliminated.indexOf(code) !== -1) { cls.push("out"); }
+    const chip = el("div", { class: cls.join(" ") });
+    const head = el("div", { class: "chip-head" });
+    head.appendChild(el("span", { class: "chip-code" }, code));
+    chip.appendChild(head);
+    chip.appendChild(el("div", { class: "chip-name" }, info.name || ""));
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "chip-model-input";
+    inp.value = info.model || "";
+    inp.placeholder = "实际模型名";
+    inp.maxLength = 120;
+    inp.dataset.code = code;
+    inp.setAttribute("aria-label", code + " 实际模型");
+    chip.appendChild(inp);
+    grid.appendChild(chip);
+  }
+  $("btn-edit-models").classList.add("is-hidden");
+  $("btn-models-save").classList.remove("is-hidden");
+  $("btn-models-cancel").classList.remove("is-hidden");
+  setMsg($("roster-msg"),
+    "编辑模式：修改各选手的“实际模型”（悬停卡片的括号名称）。三字码与总称不变。回车保存，Esc 取消。", "");
+}
+
+function exitModelEdit() {
+  state.editingModels = false;
+  state.modelOrig = {};
+  $("btn-edit-models").classList.remove("is-hidden");
+  $("btn-models-save").classList.add("is-hidden");
+  $("btn-models-cancel").classList.add("is-hidden");
+  setMsg($("roster-msg"), "", "");
+  if (state.lastState) { renderRoster(state.lastState); }
+}
+
+async function saveModelEdits() {
+  // 收集改动：只提交发生变化的（空值视为非法，整体不保存）
+  const updates = {};
+  const empties = [];
+  document.querySelectorAll(".chip-model-input").forEach((inp) => {
+    const code = inp.dataset.code;
+    const val = (inp.value || "").trim();
+    if (!val) {
+      empties.push(code);
+      return;
+    }
+    if (val !== state.modelOrig[code]) {
+      updates[code] = val;
+    }
+  });
+  if (empties.length) {
+    setMsg($("roster-msg"), "模型名不能为空：" + empties.join("、"), "err");
+    return;
+  }
+  const n = Object.keys(updates).length;
+  if (!n) {
+    exitModelEdit();
+    return;
+  }
+  const saveBtn = $("btn-models-save");
+  saveBtn.disabled = true;
+  const data = await api("/api/set-model", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates: updates }),
+  });
+  saveBtn.disabled = false;
+  if (data.ok) {
+    // 先退出编辑态（恢复轮询渲染），再刷新
+    state.editingModels = false;
+    state.modelOrig = {};
+    $("btn-edit-models").classList.remove("is-hidden");
+    $("btn-models-save").classList.add("is-hidden");
+    $("btn-models-cancel").classList.add("is-hidden");
+    setMsg($("roster-msg"), "已更新 " + (data.count || n) + " 个选手的实际模型。", "ok");
+    fullRefresh();
+  } else {
+    setMsg($("roster-msg"), data.error || "保存失败", "err");
   }
 }
 
@@ -497,6 +599,19 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-judge-answer").addEventListener("click", judgeAnswer);
   $("btn-upload-proposal").addEventListener("click", uploadProposal);
   $("btn-judge-proposal").addEventListener("click", judgeProposal);
+  $("btn-edit-models").addEventListener("click", enterModelEdit);
+  $("btn-models-save").addEventListener("click", saveModelEdits);
+  $("btn-models-cancel").addEventListener("click", exitModelEdit);
+  // 编辑模式键盘：回车保存，Esc 取消
+  $("roster-grid").addEventListener("keydown", (e) => {
+    if (!state.editingModels) { return; }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveModelEdits();
+    } else if (e.key === "Escape") {
+      exitModelEdit();
+    }
+  });
 
   fullRefresh();
   setInterval(refreshAll, 3000); // 实时赛况与日志
