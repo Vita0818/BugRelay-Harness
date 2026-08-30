@@ -53,9 +53,21 @@ RULES_MARKDOWN = """# Bug Relay 测试规范（选手必读）
    - 禁止附带数据文件——**测试数据全部内联写在测试函数里**。
 2. **不依赖 fixture / conftest**：不要定义或使用 `@pytest.fixture`，不要让
    `test_*` 函数的参数依赖 fixture 注入。数据在函数体内自行构造。
-3. **必须有真测试**：至少一个 `test_*` 函数，且包含 `assert` 或 `pytest.raises`
+3. **必须有真测试**：每个 `test_*` 函数都包含 `assert` 或 `pytest.raises`
    断言（无断言只警告，但骗不过验题模型的自证）。
 4. **语法合法**，编码 UTF-8。
+5. **一题一缺陷、三测同源**：每次出题只引入 **一个** 缺陷（需求变更）；
+   `hidden_tests.py` 必须恰好包含 **3 个** `test_*` 函数，全部针对这同一个
+   缺陷，从不同角度夹住它。禁止在一个文件里测多个互不相关的问题——
+   数量不对直接拒绝导入；引用多个业务模块会被警告。
+
+   三个用例的推荐分工（同一缺陷的三个侧面）：
+
+   | 用例 | 角度 |
+   | --- | --- |
+   | test_1 | 主路径：直接复现该缺陷会暴露的行为 |
+   | test_2 | 边界/邻近值：缺陷两侧的正确行为仍须保持 |
+   | test_3 | 回归防护：防止用特判糊弄过 test_1 的取巧修法 |
 
 强烈建议（静态查不出，但验题/复跑会翻车）：
 
@@ -73,20 +85,31 @@ RULES_MARKDOWN = """# Bug Relay 测试规范（选手必读）
 from src.kv import KVStore  # 唯一正确的导入姿势：包路径前缀
 
 
-def test_kv_roundtrip():
+def test_get_after_put():          # 主路径：缺陷直接暴露处
     kv = KVStore()
-    kv.put("用户A", {"score": 100, "tags": ["new", "vip"]})
-    assert kv.get("用户A") == {"score": 100, "tags": ["new", "vip"]}
+    kv.put("用户A", {"score": 100})
+    assert kv.get("用户A") == {"score": 100}
 
 
-def test_missing_key():
+def test_put_overwrite():          # 边界：邻近行为必须仍然正确
     kv = KVStore()
+    kv.put("k", 1)
+    kv.put("k", 2)
+    assert kv.get("k") == 2
+
+
+def test_other_keys_unaffected():  # 回归防护：防特判糊弄
+    kv = KVStore()
+    kv.put("x", 1)
+    kv.put("y", 2)
+    assert kv.get("x") == 1
+    assert kv.get("y") == 2
     assert kv.get("不存在") is None
-    kv.delete("不存在")  # 幂等删除，不应抛错
 ```
 
-出题思路：用「构造数据 + 断言行为」代替「加载现成数据」。边界值、空态、异常路径
-都是好题；纯正常路径的题太弱，验题模型一遍就能过，你的题等于白出。
+出题思路：用「构造数据 + 断言行为」代替「加载现成数据」；三个用例从三个角度
+夹住**同一个**缺陷。边界值、空态、异常路径都是好题；纯正常路径的题太弱，
+验题模型一遍就能过，你的题等于白出。
 
 ## 五、框架如何跑你的测试（执行规范）
 

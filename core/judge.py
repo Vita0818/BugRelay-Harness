@@ -385,8 +385,8 @@ def import_answer(path_str: str) -> Dict:
     return {"ok": True, "pending": str(pending), "message": "已导入答题材料: %s" % pending.name}
 
 
-def lint_hidden_test(py_path: str | Path) -> Dict:
-    """隐藏测试静态闸门（出题规范【README「测试规范」】的机器校验）。
+def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) -> Dict:
+    """隐藏测试静态闸门（出题规范【README「测试规范」/ arena_repo TESTING_GUIDELINES.md】的机器校验）。
 
     阻断级（任一命中即拒绝导入，不进入验题——省模型调用）：
     1. 语法错误（ast 解析失败）；
@@ -394,14 +394,25 @@ def lint_hidden_test(py_path: str | Path) -> Dict:
     3. 依赖 tests/ 内其他模块：import tests / from tests ...；
     4. 相对导入（from . / from ..）：验题时单文件拷贝到临时仓库，相对导入必挂；
     5. 依赖 conftest fixture：调用无默认值的 @pytest.fixture 函数
-       （conftest 属于历史测试，锁定不可改，出题人不能假设它存在）。
+       （conftest 属于历史测试，锁定不可改，出题人不能假设它存在）；
+    6. 测试数量不符「一题一缺陷、三测同源」：必须恰好 required_count 个 test_*
+       函数（config.proposal_test_count，默认 3），全部针对同一缺陷。
 
     警告级（只写日志提示，不阻断）：
-    - test_* 函数体内没有任何 assert / pytest.raises / pytest.warns —— 可能没做真断言。
+    - test_* 函数体内没有任何 assert / pytest.raises / pytest.warns —— 可能没做真断言；
+    - 测试引用了多个业务模块（src/...）—— 疑似一道题里测了多个不相关问题
+      （"同一问题"无法静态确证，仅启发式提示）。
     """
     path = Path(py_path)
     errors: List[str] = []
     warnings: List[str] = []
+    cfg = load_config()
+    if required_count is None:
+        try:
+            required_count = int(cfg.get("proposal_test_count", 3))
+        except (TypeError, ValueError):
+            required_count = 3
+    business_dir = str(cfg.get("business_dir", "src")).strip("/") or "src"
     try:
         source = path.read_text(encoding="utf-8")
     except Exception as e:
@@ -421,18 +432,23 @@ def lint_hidden_test(py_path: str | Path) -> Dict:
                     fixture_names.add(node.name)
 
     test_count = 0
+    business_modules: set = set()
     for node in ast.walk(tree):
-        # 规则 3/4：import 检查
+        # 规则 3/4：import 检查（顺带收集业务模块引用，供"三测同源"启发式）
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "tests" or alias.name.startswith("tests."):
                     errors.append("禁止依赖 tests/ 历史测试模块: import %s" % alias.name)
+                if alias.name == business_dir or alias.name.startswith(business_dir + "."):
+                    business_modules.add(alias.name)
         elif isinstance(node, ast.ImportFrom):
             mod = node.module or ""
             if node.level > 0:
                 errors.append("禁止相对导入（验题为单文件拷贝，from . / from .. 必失败）")
             elif mod == "tests" or mod.startswith("tests."):
                 errors.append("禁止依赖 tests/ 历史测试模块: from %s import ..." % mod)
+            if mod == business_dir or mod.startswith(business_dir + "."):
+                business_modules.add(mod)
         # 规则 2：收集测试函数
         elif isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
             test_count += 1
@@ -458,7 +474,15 @@ def lint_hidden_test(py_path: str | Path) -> Dict:
                                   % (node.name, k.func.id))
     if test_count == 0:
         errors.append("文件中没有任何 test_* 函数（pytest 收集不到测试，全绿判定必 FAIL）")
-    return {"ok": not errors, "errors": errors, "warnings": warnings}
+    elif test_count != required_count:
+        errors.append("「一题一缺陷、三测同源」：hidden_tests.py 必须恰好包含 %d 个 test_* 函数"
+                      "（当前 %d 个），且全部针对同一个缺陷" % (required_count, test_count))
+    if len(business_modules) > 1:
+        warnings.append("测试引用了多个业务模块（%s）——本赛制要求每次出题只引入一个缺陷，"
+                        "三个用例测同一问题；请确认不是把多个不相关问题塞进了同一道题"
+                        % ", ".join(sorted(business_modules)))
+    return {"ok": not errors, "errors": errors, "warnings": warnings,
+            "test_count": test_count}
 
 
 def import_proposal(prompt_file: str, test_file: str) -> Dict:
@@ -482,8 +506,8 @@ def import_proposal(prompt_file: str, test_file: str) -> Dict:
     if not lint["ok"]:
         return {"ok": False, "error": "隐藏测试不合规，已拒绝导入：" +
                 "；".join(lint["errors"]) +
-                "（规范见 README「测试规范」：单文件自包含、仅标准库+被测代码依赖、"
-                "数据内联在测试内）"}
+                "（规范见 arena_repo/TESTING_GUIDELINES.md 或 README「测试规范」："
+                "一题一缺陷、恰好 3 个测试同源、单文件自包含、数据内联）"}
     if lint["warnings"]:
         log_event("lint-warn", "隐藏测试警告：" + "；".join(lint["warnings"]))
 

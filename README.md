@@ -245,9 +245,14 @@ harness_repo/
    验题时它会被**单独拷贝**到临时仓库，任何外部依赖都会挂。
 2. **不依赖 fixture / conftest**：conftest 属于历史测试，锁定不可改，出题人不能假设
    它存在。数据在测试函数体内自行构造。
-3. **必须有真测试**：至少一个 `test_*` 函数（pytest 函数式风格），且含 `assert` /
+3. **必须有真测试**：每个 `test_*` 函数（pytest 函数式风格）都含 `assert` /
    `pytest.raises` 断言（无断言只警告，但"永真测试"骗不过验题，也对不起接力）。
 4. **语法必须合法**（废话，但 AI 常翻车）。
+5. **一题一缺陷、三测同源**：每次出题只引入**一个**缺陷（需求变更）；
+   `hidden_tests.py` 必须恰好包含 **3 个** `test_*` 函数（数量可经
+   `config.json` 的 `proposal_test_count` 调整，默认 3），全部针对同一个缺陷，
+   从不同角度夹住它——推荐分工：主路径复现 / 边界邻近值 / 回归防护（防特判
+   糊弄）。禁止在一个文件里测多个互不相关问题（引用多个业务模块会被警告）。
 
 ### 9.2 稳定性要求（强烈建议，无法静态校验）
 
@@ -277,19 +282,28 @@ from src.storage.json_db import DB  # src/storage/json_db.py
 不能附带数据文件；arena_repo 也不预置业务数据（业务代码本身就是各选手写的）。
 
 ```python
-def test_kv_roundtrip():
+def test_get_after_put():          # 主路径：缺陷直接暴露处
     kv = KVStore()
-    kv.put("用户A", {"score": 100, "tags": ["new", "vip"]})
-    assert kv.get("用户A") == {"score": 100, "tags": ["new", "vip"]}
+    kv.put("用户A", {"score": 100})
+    assert kv.get("用户A") == {"score": 100}
 
-def test_empty_and_missing():
+def test_put_overwrite():          # 边界：邻近行为必须仍然正确
     kv = KVStore()
+    kv.put("k", 1)
+    kv.put("k", 2)
+    assert kv.get("k") == 2
+
+def test_other_keys_unaffected():  # 回归防护：防特判糊弄
+    kv = KVStore()
+    kv.put("x", 1)
+    kv.put("y", 2)
+    assert kv.get("x") == 1 and kv.get("y") == 2
     assert kv.get("不存在") is None
-    kv.delete("不存在")            # 幂等删除，不应抛错
 ```
 
-出题思路：**用"构造数据 + 断言行为"代替"加载现成数据"**。边界值、空态、异常路径
-都是好题；纯正常路径的题太弱，验题模型一遍就能过。
+出题思路：**用"构造数据 + 断言行为"代替"加载现成数据"**；三个用例从三个角度
+夹住**同一个**缺陷。边界值、空态、异常路径都是好题；纯正常路径的题太弱，
+验题模型一遍就能过。
 
 ### 9.5 框架执行规范（跑测试的机器行为）
 

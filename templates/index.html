@@ -134,7 +134,7 @@
 
   <div class="op-card" id="op-proposal">
     <span class="card-group-label">出题区 / Proposal submission</span>
-    <p class="hint">也可免上传：让 Agent 把 <code>next_prompt.md</code> 与 <code>hidden_tests.py</code> 写入 <code>inbox/</code>，直接点「校验出题并交棒」自动导入。</p>
+    <p class="hint">每次出题只引入<b>一个</b>缺陷，hidden_tests.py 须<b>恰好 3 个</b>测试用例且全部针对同一问题（主路径 / 边界 / 回归防护），数量不符会被拒绝导入。也可免上传：让 Agent 把 <code>next_prompt.md</code> 与 <code>hidden_tests.py</code> 写入 <code>inbox/</code>，直接点「校验出题并交棒」自动导入。完整规范见 arena_repo 的 TESTING_GUIDELINES.md。</p>
     <div class="form-row">
       <label>需求文档 next_prompt.md</label>
       <input type="file" id="proposal-prompt" accept=".md,.txt">

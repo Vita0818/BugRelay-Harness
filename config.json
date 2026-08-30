@@ -10,6 +10,7 @@
     "timeout_seconds": 600
   },
   "pytest_args": ["-q"],
+  "proposal_test_count": 3,
   "state_file": "state/match.json",
   "hidden_tests_dir": "hidden_tests",
   "prompts_dir": "prompts",
