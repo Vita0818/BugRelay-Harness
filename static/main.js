@@ -599,13 +599,112 @@ async function drawLots() {
   btn.disabled = true;
   const data = await api("/api/draw", { method: "POST" });
   btn.disabled = false;
-  if (data.ok) {
-    showBanner("抽签完成：" + (data.order || []).map((c, i) => (i + 1) + " " + c).join(" · "), "info");
-    state.bannerHoldUntil = Date.now() + 15000;
-    fullRefresh();
-  } else {
+  if (!data.ok) {
     showBanner("抽签失败: " + (data.error || ""), "error");
+    return;
   }
+  const order = data.order || [];
+  const players = (data.state && data.state.players) || {};
+  await runDrawAnimation(order, players);
+  showBanner("抽签完成：" + order.map((c, i) => (i + 1) + " " + c).join(" · "), "info");
+  state.bannerHoldUntil = Date.now() + 15000;
+  fullRefresh();
+}
+
+/* ---------------- 抽签动画（结果已由 /api/draw 决定，动画只是揭晓） ----------------
+   节奏：前 5 位慢（悬念）-> 中段快 -> 最后 6 位慢（压轴），单次全长约 14 秒，
+   随时点「跳过动画」瞬间补齐。 */
+function runDrawAnimation(order, players) {
+  return new Promise((resolve) => {
+    const modal = $("draw-modal");
+    const roll = $("draw-roll");
+    const rollName = $("draw-roll-name");
+    const posNum = $("draw-pos-num");
+    const result = $("draw-result");
+    const skipBtn = $("btn-draw-skip");
+    const closeBtn = $("btn-draw-close");
+    let i = 0;
+    let rollTimer = null;
+    let endTimer = null;
+    let done = false;
+
+    result.innerHTML = "";
+    closeBtn.classList.add("is-hidden");
+    skipBtn.classList.remove("is-hidden");
+    modal.classList.remove("is-hidden");
+    modal.setAttribute("aria-hidden", "false");
+
+    const speedFor = (idx) => (idx < 5 ? 420 : (idx < order.length - 6 ? 240 : 420));
+
+    function lockChip(code, idx) {
+      const prev = result.querySelector(".draw-chip.latest");
+      if (prev) { prev.classList.remove("latest"); }
+      const chip = el("div", { class: "draw-chip latest" });
+      chip.appendChild(el("span", { class: "pos" }, String(idx + 1)));
+      chip.appendChild(document.createTextNode(" " + code));
+      const info = players[code] || {};
+      chip.title = (info.name || "") + (info.model ? "（" + info.model + "）" : "");
+      result.appendChild(chip);
+    }
+
+    function finish() {
+      done = true;
+      clearInterval(rollTimer);
+      roll.classList.remove("rolling");
+      posNum.textContent = "—";
+      roll.textContent = "完成";
+      rollName.textContent = "1 号位 " + (order[0] || "") + " · 共 " + order.length + " 人，接力开始";
+      skipBtn.classList.add("is-hidden");
+      closeBtn.classList.remove("is-hidden");
+      endTimer = setTimeout(close, 3000); // 3 秒后自动收起，也可手动点「完成」
+    }
+
+    function close() {
+      clearInterval(rollTimer);
+      clearTimeout(endTimer);
+      modal.classList.add("is-hidden");
+      modal.setAttribute("aria-hidden", "true");
+      resolve();
+    }
+
+    function next() {
+      if (i >= order.length) { return finish(); }
+      const idx = i;
+      const code = order[idx];
+      posNum.textContent = String(idx + 1);
+      rollName.textContent = "";
+      roll.classList.remove("locked");
+      roll.classList.add("rolling");
+      const pool = order.slice(idx); // 只在"还没锁定的人"里滚动（含即将中签者）
+      rollTimer = setInterval(() => {
+        roll.textContent = pool[Math.floor(Math.random() * pool.length)];
+      }, 60);
+      setTimeout(() => {
+        clearInterval(rollTimer);
+        roll.classList.remove("rolling");
+        roll.textContent = code;
+        rollName.textContent = (players[code] || {}).name || "";
+        roll.classList.add("locked");
+        lockChip(code, idx);
+        i += 1;
+        setTimeout(next, 140);
+      }, speedFor(idx));
+    }
+
+    // onclick 赋值（覆盖式），避免每次抽签叠加监听器
+    skipBtn.onclick = () => {
+      if (done) { return; }
+      clearInterval(rollTimer);
+      while (i < order.length) {
+        lockChip(order[i], i);
+        i += 1;
+      }
+      finish();
+    };
+    closeBtn.onclick = close;
+
+    next();
+  });
 }
 
 /* ---------------- 工具 ---------------- */

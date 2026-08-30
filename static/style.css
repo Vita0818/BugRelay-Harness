@@ -602,4 +602,92 @@ code {
 
 @media (prefers-reduced-motion: reduce) {
   .step.ongoing .step-number { animation: none; }
+  .draw-roll.rolling { animation: none; }
+  .draw-chip { animation: none; }
 }
+
+/* ---------- 抽签动画模态（黑白灰：滚动 -> 锁定 -> 完整顺序） ---------- */
+.draw-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+.draw-modal.is-hidden { display: none; }
+.draw-panel {
+  width: min(44rem, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--background);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  box-shadow: 0 24px 60px rgba(10, 10, 10, 0.18);
+  padding: 1.35rem 1.45rem 1.45rem;
+}
+.draw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+.draw-head h3 { margin: 0; font-size: 1.02rem; font-weight: 800; }
+.draw-head h3 span {
+  margin-left: 0.5rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.draw-stage { text-align: center; padding: 1.1rem 0 0.75rem; }
+.draw-pos-label { color: var(--muted); font-size: 0.76rem; font-weight: 600; }
+.draw-pos-label span { color: var(--foreground); font-weight: 800; }
+.draw-roll {
+  margin-top: 0.15rem;
+  font-size: 2.7rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  min-height: 3.1rem;
+}
+.draw-roll.rolling { animation: roll-flick 110ms linear infinite; }
+.draw-roll.locked { animation: lock-pop 240ms ease; }
+.draw-roll-name { color: var(--muted); font-size: 0.86rem; font-weight: 600; min-height: 1.2rem; }
+@keyframes roll-flick {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+@keyframes lock-pop {
+  0% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+/* 已锁定席位：网格逐个落入，最新一枚黑底反白（聚光灯） */
+.draw-result {
+  margin-top: 0.85rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.4rem, 1fr));
+  gap: 0.45rem;
+  min-height: 2.6rem;
+}
+.draw-chip {
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.42rem 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  animation: lock-pop 180ms ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.draw-chip .pos { margin-right: 0.32rem; color: var(--muted); font-size: 0.68rem; font-weight: 700; }
+.draw-chip.latest { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
+.draw-chip.latest .pos { color: #b3b3b3; }
+.draw-foot { margin-top: 1rem; text-align: center; }
