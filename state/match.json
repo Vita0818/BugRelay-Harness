@@ -1,0 +1,12 @@
+{
+  "round": 1,
+  "order": ["A", "B", "C", "D"],
+  "survivors": ["A", "B", "C", "D"],
+  "eliminated": [],
+  "current_index": 0,
+  "current_player": "A",
+  "current_prompt_file": null,
+  "arena_ready": false,
+  "last_result": null,
+  "scores": {}
+}

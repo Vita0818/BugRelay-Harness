@@ -1,0 +1,17 @@
+{
+  "arena_repo_path": "../arena_repo",
+  "business_dir": "src",
+  "history_tests_dir": "tests",
+  "verifier_model": {
+    "provider": "openai_compatible",
+    "base_url": "http://localhost:11434/v1",
+    "model": "llama-3.1:8b",
+    "api_key": "ollama",
+    "timeout_seconds": 600
+  },
+  "pytest_args": ["-q"],
+  "state_file": "state/match.json",
+  "hidden_tests_dir": "hidden_tests",
+  "prompts_dir": "prompts",
+  "backups_dir": "backups"
+}

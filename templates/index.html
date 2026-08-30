@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bug Relay · 接力赛控制台</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">🐛 Bug Relay <span class="brand-sub">AI 编程接力竞技 · 评测框架控制台</span></div>
+  <div class="topbar-actions">
+    <button id="btn-refresh" class="btn">刷新</button>
+    <button id="btn-restore" class="btn danger">还原到最近备份</button>
+  </div>
+</header>
+
+<!-- 顶部赛况 -->
+<section id="stats" class="stats">
+  <div class="stat"><label>轮次</label><b id="st-round">–</b></div>
+  <div class="stat"><label>当前选手</label><b id="st-player">–</b></div>
+  <div class="stat"><label>阶段</label><b id="st-phase" title="answering=等待验收答题；proposing=等待校验出题">–</b></div>
+  <div class="stat"><label>存活</label><b id="st-survivors">–</b></div>
+  <div class="stat"><label>淘汰</label><b id="st-eliminated">–</b></div>
+  <div class="stat"><label>arena_repo</label><b id="st-arena">–</b></div>
+  <div class="stat"><label>最近结果</label><b id="st-last">–</b></div>
+</section>
+
+<div id="banner" class="banner hidden"></div>
+
+<!-- 战场区：三栏 -->
+<main class="battle">
+  <section class="col col-left">
+    <h3>📁 arena_repo 文件树（只读）</h3>
+    <div id="tree" class="tree"><div class="empty">加载中…</div></div>
+    <div class="fileview-wrap">
+      <div id="file-title" class="file-title">点击左侧文件查看内容</div>
+      <pre id="fileview" class="fileview"></pre>
+    </div>
+  </section>
+
+  <section class="col col-mid">
+    <h3>📋 当前需求 next_prompt.md</h3>
+    <pre id="prompt" class="prompt">等待首轮需求</pre>
+  </section>
+
+  <section class="col col-right">
+    <h3>📜 实时日志 <span class="log-hint">（3 秒自动刷新 · 最新在上）</span></h3>
+    <div id="log" class="log"><div class="empty">暂无日志</div></div>
+  </section>
+</main>
+
+<!-- 操作区 -->
+<section class="ops">
+  <div class="op-card" id="op-answer">
+    <h3>① 答题区 · 当前选手提交业务代码改动</h3>
+    <p class="hint">支持上传 .zip（建议为 business_dir 结构，或带 src/ 前缀）或多个业务文件/文件夹。内容只会应用到 arena_repo 的 <code>src/</code>，严禁包含 <code>tests/</code> 改动（自动拦截并判 FAIL）。</p>
+    <input type="file" id="answer-files" multiple
+           accept=".zip,.py,.txt,.json,.toml,.yaml,.yml,.cfg,.ini,.md,.sh,.js,.html,.css">
+    <div class="op-buttons">
+      <button id="btn-upload-answer" class="btn">上传答题文件</button>
+      <button id="btn-judge-answer" class="btn primary">验收答题</button>
+    </div>
+    <div id="answer-msg" class="op-msg"></div>
+  </div>
+
+  <div class="op-card" id="op-proposal">
+    <h3>② 出题区 · 答题通过后提交下一棒需求 + 隐藏测试</h3>
+    <div class="form-row">
+      <label>需求文档 next_prompt.md</label>
+      <input type="file" id="proposal-prompt" accept=".md,.txt">
+    </div>
+    <div class="form-row">
+      <label>隐藏测试 hidden_tests.py</label>
+      <input type="file" id="proposal-test" accept=".py">
+    </div>
+    <div class="op-buttons">
+      <button id="btn-upload-proposal" class="btn">上传出题材料</button>
+      <button id="btn-judge-proposal" class="btn primary">校验出题并交棒</button>
+    </div>
+    <div id="proposal-msg" class="op-msg"></div>
+  </div>
+</section>
+
+<!-- 底部测试结果：只显示总结果与计数 -->
+<section class="tests">
+  <h3>🧪 测试结果</h3>
+  <div class="test-row">
+    <span class="test-label">历史测试</span>
+    <span id="t-history" class="badge">–</span>
+    <span id="t-history-count" class="count"></span>
+  </div>
+  <div class="test-row">
+    <span class="test-label">隐藏测试</span>
+    <span id="t-hidden" class="badge">–</span>
+    <span id="t-hidden-count" class="count"></span>
+  </div>
+  <p class="hint">只显示总结果与通过数/总数；测试函数名、断言内容与 diff 一律不展示。前端任何接口都不会返回 hidden_tests/ 内容。</p>
+</section>
+
+<footer class="footer">
+  Bug Relay harness · 框架不触碰 arena_repo 的业务逻辑，不自动生成业务代码，也永远不运行/观测任何选手 Agent —— 它只在人类点击按钮的瞬间工作。
+</footer>
+
+<script src="/static/main.js"></script>
+</body>
+</html>

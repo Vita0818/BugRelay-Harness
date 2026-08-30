@@ -1,0 +1,14 @@
+# 运行时产物（验题临时目录 / 上传暂存）
+tmp/
+
+# Python 缓存
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# arena_repo 完整备份体积大，不入库（保留占位）
+backups/*
+!backups/.gitkeep
+
+# 系统文件
+.DS_Store
