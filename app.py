@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from core import judge, repo_ops
 from core.utils import (
-    BASE_DIR, UPLOADS_DIR, ensure_dirs, load_state, log_event, read_log,
+    BASE_DIR, UPLOADS_DIR, draw_order, ensure_dirs, load_state, log_event, read_log,
     resolve_path, set_player_models,
 )
 
@@ -248,6 +248,23 @@ async def api_set_model(payload: dict):
         state = set_player_models(updates)
         return {"ok": True, "state": state, "count": len(updates)}
     except ValueError as e:  # 校验失败（未知三字码/空模型名）
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
+
+
+@app.post("/api/draw")
+async def api_draw():
+    """顺序抽签：随机重排全部选手接力顺序并重置比赛进度（每场开始时点）。
+
+    接力沿新顺序从 1 号位循环到最后再回 1。只重排顺序/重置进度；
+    players 选手表与 current_prompt_file 首轮需求保留，arena 未就绪时同样可用。
+    """
+    try:
+        state = draw_order()
+        return {"ok": True, "state": state, "order": state.get("order"),
+                "message": state.get("last_action_msg")}
+    except ValueError as e:
         return {"ok": False, "error": str(e)}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)

@@ -9,6 +9,7 @@
     python -m cli.bugrelay judge-proposal              # 校验出题并交棒
     python -m cli.bugrelay restore                     # 还原最近备份
     python -m cli.bugrelay set-model FBL "Claude 5.5"  # 更新选手实际模型（模型迭代）
+    python -m cli.bugrelay draw                        # 顺序抽签（每场开始时）
 
 说明：
 - 与 Web 共用 core/ 函数，操作结果一致；
@@ -27,7 +28,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from core import judge, repo_ops          # noqa: E402
-from core.utils import ensure_dirs, load_state, set_player_models  # noqa: E402
+from core.utils import draw_order, ensure_dirs, load_state, set_player_models  # noqa: E402
 
 try:  # rich 可选，仅美化 CLI 输出
     from rich.console import Console
@@ -128,6 +129,31 @@ def cmd_set_model(args) -> int:
         return 1
     info = (st.get("players") or {}).get(args.code) or {}
     _print("已更新：%s · %s（%s）" % (args.code, info.get("name", ""), info.get("model", "")))
+    return 0
+
+
+def cmd_draw(_args) -> int:
+    """顺序抽签（等同 /api/draw）：随机重排接力顺序并重置比赛进度（每场开始时用）。"""
+    _bootstrap()
+    try:
+        st = draw_order()
+    except ValueError as e:
+        _print("抽签失败：%s" % e)
+        return 1
+    order = st.get("order") or []
+    players = st.get("players") or {}
+    if _CONSOLE is not None:
+        table = Table(title="抽签结果（从 1 号接力到最后一位，再回到 1 号循环）")
+        table.add_column("位次", justify="right", style="cyan")
+        table.add_column("三字码", style="bold")
+        table.add_column("总称")
+        for i, code in enumerate(order):
+            table.add_row(str(i + 1), code, (players.get(code) or {}).get("name", ""))
+        _CONSOLE.print(table)
+    else:
+        print("抽签结果（从 1 号接力到最后一位，再回到 1 号循环）：")
+        for i, code in enumerate(order):
+            print("%2d. %s %s" % (i + 1, code, (players.get(code) or {}).get("name", "")))
     return 0
 
 
@@ -236,6 +262,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_model.add_argument("code", help="选手三字码，如 FBL")
     p_model.add_argument("model", help="新的实际模型名，如 'Claude Fable 5.5'")
     p_model.set_defaults(func=cmd_set_model)
+
+    p_draw = sub.add_parser(
+        "draw", help="顺序抽签：随机重排接力顺序并重置比赛进度（等同 /api/draw；每场开始时用）")
+    p_draw.set_defaults(func=cmd_draw)
 
     return parser
 

@@ -109,6 +109,10 @@ Mimo 系），增删选手只需同步改 `order`、`survivors`、`players`、`s
 2. 把首轮需求 `next_prompt.md` 放入 `prompts/`（任意文件名，如 `round_1.md`），首轮隐藏测试 `hidden_tests.py` 放入 `hidden_tests/`。
 3. 在 `state/match.json` 中把 `current_prompt_file` 设为该需求文件名（如 `"round_1"` 或 `"round_1.md"`，框架按文件名在 `prompts/` 下查找）。
    > 选手只能看到 `next_prompt.md`（Web 中栏完整展示），**永远看不到 hidden_tests/ 的任何内容**。
+4. **顺序抽签（每场开始）**：点控制台顶部「抽签顺序 / Draw」按钮（或 CLI `draw`、`POST /api/draw`），
+   为全部选手随机抽出接力顺序（`SystemRandom` 公平洗牌）。抽签会重置比赛进度（轮次=1、
+   积分清零、无淘汰），但**保留** `players` 选手表与已设置的首轮需求；之后接力按抽中顺序
+   从 1 号位循环到最后一位再回到 1 号，一直接力下去。选手席卡片上的小号数字即接力位次。
 
 ### 5.2 每轮循环（每位选手固定四步：作答 → 判定 → 出题 → 自证）
 
@@ -158,6 +162,7 @@ python -m cli.bugrelay load-proposal <md> <py>         # 导入出题材料
 python -m cli.bugrelay judge-proposal                  # 校验出题并交棒（inbox/ 有材料时自动拾取）
 python -m cli.bugrelay restore                         # 还原最近备份
 python -m cli.bugrelay set-model FBL "Claude Fable 5.5" # 模型迭代：更新选手实际模型
+python -m cli.bugrelay draw                            # 顺序抽签：随机重排接力顺序并重置进度（每场开始时）
 python -m cli.bugrelay web                             # 启动 Web
 ```
 
@@ -178,6 +183,7 @@ python -m cli.bugrelay web                             # 启动 Web
 | POST | `/api/judge-proposal` | 校验出题并交棒 |
 | POST | `/api/restore` | 还原最近备份 |
 | POST | `/api/set-model` | 批量更新选手实际模型 `{"updates": {三字码: 新模型名}}`（模型迭代；arena 未就绪也可用） |
+| POST | `/api/draw` | 顺序抽签：随机重排全部选手接力顺序并重置比赛进度（保留选手表与首轮需求） |
 
 安全约定：**前端任何接口都不返回 hidden_tests/ 内容**；测试结果只显示总结果与
 通过数/总数，测试函数名、断言内容、diff 一律不展示（pytest 原始输出只留在服务端终端供人类排障）。

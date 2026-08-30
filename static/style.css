@@ -170,6 +170,14 @@ code {
 }
 .chip:hover { background: var(--hover); box-shadow: 0 6px 16px rgba(10, 10, 10, 0.06); }
 .chip-head { overflow: hidden; }
+/* 接力位次号（抽签顺序）：三字码前灰色小号数字，当前位次随黑章反白 */
+.chip-pos {
+  margin-right: 0.35rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.chip.current .chip-pos { color: #b3b3b3; }
 .chip-code {
   font-size: 0.85rem;
   font-weight: 800;

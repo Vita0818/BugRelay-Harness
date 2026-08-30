@@ -24,6 +24,7 @@ const state = {
   lastState: null,      // 最近一次 /api/state 返回的 state（进入模型编辑时用）
   editingModels: false, // 模型编辑模式：轮询期间不重绘选手席，避免 3 秒清空输入
   modelOrig: {},        // 编辑模式的原始模型名 {三字码: model}，保存时求差集
+  bannerHoldUntil: 0,   // 临时结果横幅（抽签/还原）的保持截止时间，超时后由轮询清除
 };
 
 /* ---------------- 通用请求 ---------------- */
@@ -98,6 +99,8 @@ function renderState(st, inbox, currentStep) {
 
   if (st.status === "finished") {
     showBanner("比赛已结束：无存活选手可继续接力。", "warn");
+  } else if (Date.now() < (state.bannerHoldUntil || 0)) {
+    // 抽签/还原等临时结果横幅保持 15 秒（32 位顺序需要阅读时间），优先于 arena 未就绪提示
   } else if (!st.arena_ready) {
     showBanner("arena_repo 未就绪：请确认 config.json 的 arena_repo_path 指向已存在的独立 git 仓库（含 src/ 与 tests/）。在此之前仅能浏览页面，无法评测。", "warn");
   } else {
@@ -259,7 +262,7 @@ function renderRoster(st) {
   const survivors = st.survivors || [];
   const eliminated = st.eliminated || [];
   const scores = st.scores || {};
-  for (const code of order) {
+  order.forEach((code, i) => {
     const info = players[code] || {};
     const chip = el("div", { class: "chip" });
     if (code === st.current_player && st.status !== "finished") {
@@ -268,6 +271,7 @@ function renderRoster(st) {
       chip.classList.add("out");
     }
     const head = el("div", { class: "chip-head" });
+    head.appendChild(el("span", { class: "chip-pos" }, String(i + 1)));
     head.appendChild(el("span", { class: "chip-code" }, code));
     if (typeof scores[code] === "number") {
       head.appendChild(el("span", { class: "chip-score" }, String(scores[code])));
@@ -278,7 +282,7 @@ function renderRoster(st) {
       chip.title = code + " — " + info.model + (eliminated.indexOf(code) !== -1 ? " （已淘汰）" : "");
     }
     grid.appendChild(chip);
-  }
+  });
   const sub = $("roster-sub");
   if (sub) {
     sub.textContent = "Roster · " + order.length + " · alive " + survivors.length;
@@ -571,10 +575,37 @@ async function restoreBackup() {
   const data = await api("/api/restore", { method: "POST" });
   if (data.ok) {
     showBanner(data.message || "已还原", "info");
+    state.bannerHoldUntil = Date.now() + 15000;
   } else {
     showBanner("还原失败: " + (data.error || ""), "error");
   }
   fullRefresh();
+}
+
+/* ---------------- 顺序抽签（每场开始时；随机重排接力顺序并重置比赛进度） ---------------- */
+
+async function drawLots() {
+  const st = state.lastState || {};
+  const started = (st.round || 1) > 1 ||
+                  (st.eliminated && st.eliminated.length) ||
+                  Object.values(st.scores || {}).some((v) => v > 0);
+  const msg = started
+    ? "比赛已在进行中。抽签将重置全部进度（轮次/积分/淘汰），并重新随机排列接力顺序。继续？"
+    : "确认抽签？将为全部选手随机抽出接力顺序，从 1 号位开始接力，循环到最后一位再回到 1 号。";
+  if (!confirm(msg)) {
+    return;
+  }
+  const btn = $("btn-draw");
+  btn.disabled = true;
+  const data = await api("/api/draw", { method: "POST" });
+  btn.disabled = false;
+  if (data.ok) {
+    showBanner("抽签完成：" + (data.order || []).map((c, i) => (i + 1) + " " + c).join(" · "), "info");
+    state.bannerHoldUntil = Date.now() + 15000;
+    fullRefresh();
+  } else {
+    showBanner("抽签失败: " + (data.error || ""), "error");
+  }
 }
 
 /* ---------------- 工具 ---------------- */
@@ -595,6 +626,7 @@ function el(tag, attrs = {}, text) {
 window.addEventListener("DOMContentLoaded", () => {
   $("btn-refresh").addEventListener("click", fullRefresh);
   $("btn-restore").addEventListener("click", restoreBackup);
+  $("btn-draw").addEventListener("click", drawLots);
   $("btn-upload-answer").addEventListener("click", uploadAnswer);
   $("btn-judge-answer").addEventListener("click", judgeAnswer);
   $("btn-upload-proposal").addEventListener("click", uploadProposal);

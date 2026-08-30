@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -184,6 +185,45 @@ def set_player_models(updates: Dict[str, str]) -> Dict[str, Any]:
     state["players"] = players
     save_state(state)
     log_event("set-model", "更新选手实际模型：" + "；".join(changed))
+    return state
+
+
+def draw_order() -> Dict[str, Any]:
+    """顺序抽签：随机重排全部选手的接力顺序，并把比赛重置为开局状态（每场开始时用）。
+
+    - 只动"顺序与进度"字段：order（随机重排）、survivors/eliminated、current_index/
+      current_player、round、scores、phase、pending 材料、last_result 等全部归零；
+    - 保留 players 选手表与 current_prompt_file（已备好的首轮需求不丢）；
+    - 用 SystemRandom 洗牌（公平抽签）；接力沿新 order 从 1 号循环到最后再回 1，
+      该循环推进逻辑在 core/judge.py 的 _advance 中，天然支持回绕；
+    - 成功后写 draw 日志，返回更新后的 state。
+    """
+    state = load_state()
+    order = list(state.get("order") or [])
+    if not order:
+        order = list((state.get("players") or {}).keys())
+    if not order:
+        raise ValueError("当前没有可抽签的选手（order/players 均为空）")
+    # 去重防脏数据（同名选手重复出现会打乱接力推进）
+    order = list(dict.fromkeys(order))
+    random.SystemRandom().shuffle(order)
+    state["order"] = order
+    state["survivors"] = list(order)
+    state["eliminated"] = []
+    state["round"] = 1
+    state["current_index"] = 0
+    state["current_player"] = order[0]
+    state["scores"] = {code: 0 for code in order}
+    state["phase"] = "answering"
+    state["status"] = "running"
+    state["pending_answer"] = None
+    state["pending_proposal"] = None
+    state["last_result"] = None
+    state["last_test_summary"] = None
+    state["last_action_msg"] = "已抽签，%s 为 1 号位，接力由此开始" % order[0]
+    save_state(state)
+    log_event("draw", "顺序抽签（重置为新比赛）：" + " → ".join(
+        "%d.%s" % (i + 1, c) for i, c in enumerate(order)))
     return state
 
 
