@@ -13,16 +13,42 @@
 | `harness_repo`（本仓库） | 评测框架：FastAPI Web 控制台 + CLI + 裁判核心 |
 | `arena_repo`（人类另建） | 真正被选手 AI 修改的业务代码仓库，**独立 git 仓库**，结构为 `src/`（业务代码，可由 `business_dir` 配置）+ `tests/`（历史 pytest 测试，一旦存在即锁定，禁止修改/删除） |
 
-框架通过 `config.json` 的 `arena_repo_path` 指向 arena_repo（默认 `../arena_repo`）。
+框架通过 `config.json` 的 `arena_repo_path`（或环境变量 `BUGRELAY_ARENA_REPO`，见 §2）指向 arena_repo（默认 `../arena_repo`，即两个仓库并排放）。
 **arena_repo 不存在时，框架/CLI/Web 仍能正常启动**，只是相关操作显示"arena_repo 未就绪"，不会抛异常崩溃。
 
-## 2. 安装
+## 2. 安装与部署
+
+依赖：fastapi、uvicorn、httpx、pytest、python-multipart（FastAPI 文件上传必需），可选 python-dotenv、rich（CLI 美化）。需要 **Python ≥ 3.9**。保持轻量。
 
 ```bash
+python3 -m venv .venv && source .venv/bin/activate   # Ubuntu 系统 pip 受 PEP 668 限制，需用 venv
 pip install -r requirements.txt
 ```
 
-依赖：fastapi、uvicorn、httpx、pytest、python-multipart（FastAPI 文件上传必需），可选 python-dotenv、rich（CLI 美化）。保持轻量。
+### Ubuntu 快速部署（开箱即用）
+
+```bash
+sudo apt update && sudo apt install -y python3 python3-venv git
+git clone https://github.com/Vita0818/BugRelay-Harness.git
+cd BugRelay-Harness
+./run.sh                          # 自动建 venv + 装依赖 + 启动 http://127.0.0.1:8080
+./run.sh 0.0.0.0 9000             # 自定义监听地址/端口
+```
+
+验题模型（出题校验时才需要，可选）：Ubuntu 上安装 Ollama 后执行 `ollama pull llama-3.1:8b`，`config.json` 的 `base_url` 保持 `http://localhost:11434/v1` 即可。
+
+### 指定 arena_repo 路径（三种方式，优先级从高到低）
+
+1. **环境变量**（换机器不改任何文件，适合脚本/systemd）：`export BUGRELAY_ARENA_REPO=/home/me/repos/arena_repo`
+2. **config.json 的 `arena_repo_path`**：支持绝对路径、`~` 开头、或相对路径（相对本仓库根解析）
+3. **默认 `../arena_repo`**：把 harness 与 arena_repo 两个仓库**并排克隆**即可直接用：
+
+   ```
+   repos/ $ git clone https://github.com/Vita0818/BugRelay-Harness.git
+   repos/ $ git clone <你的 arena_repo.git>     # 与 harness 平级
+   ```
+
+路径无效或未就绪时页面只提示不崩溃；指向 harness 自身或其祖先/子目录会被安全策略拒绝。
 
 ## 3. 启动
 
@@ -33,6 +59,9 @@ python -m cli.bugrelay web --host 0.0.0.0 --port 9000
 
 # 方式二：直接 uvicorn
 uvicorn app:app --host 127.0.0.1 --port 8080
+
+# 方式三：一键脚本（自动 venv + 依赖，适合 Ubuntu）
+./run.sh
 ```
 
 浏览器打开 http://127.0.0.1:8080 即为单页控制台。
@@ -114,7 +143,7 @@ python -m cli.bugrelay web                             # 启动 Web
 
 | 键 | 说明 |
 | ---- | ---- |
-| `arena_repo_path` | arena_repo 位置（相对本仓库，默认 `../arena_repo`） |
+| `arena_repo_path` | arena_repo 位置（默认 `../arena_repo`；支持绝对路径、`~`、相对本仓库的路径）。可被环境变量 `BUGRELAY_ARENA_REPO` 覆盖（优先级更高） |
 | `business_dir` / `history_tests_dir` | 业务目录（默认 `src`）与历史测试目录（默认 `tests`） |
 | `verifier_model` | OpenAI 兼容 `/chat/completions`：`base_url`/`model`/`api_key`/`timeout_seconds`。**单次调用、不重试、超时直接判 FAIL** |
 | `pytest_args` | 传给 pytest 的参数（默认 `["-q"]`，框架会追加 junitxml/legacy 等解析用参数） |
@@ -145,7 +174,7 @@ harness_repo/
 ## 9. 故障排查
 
 - **arena_repo 不存在**：页面顶部与文件树区会提示"arena_repo 未就绪"；确认 `config.json`
-  的 `arena_repo_path` 指向已存在的独立 git 仓库后点「刷新」。路径非法（指向 harness 自身或其
+  的 `arena_repo_path`（或环境变量 `BUGRELAY_ARENA_REPO`）指向已存在的独立 git 仓库后点「刷新」。路径非法（指向 harness 自身或其
   祖先/子目录）也会被判为未就绪，属安全防护。
 - **验题模型连不上**：`judge-proposal` 会按 `timeout_seconds` 超时直接判 FAIL（不重试）；
   请确认 `base_url`（如 Ollama 需 `http://localhost:11434/v1`）与 `model` 名称。

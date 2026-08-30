@@ -99,9 +99,15 @@ def resolve_path(rel: str | Path) -> Path:
 
 
 def arena_path(cfg: Optional[Dict[str, Any]] = None) -> Path:
-    """返回配置指向的 arena_repo 绝对路径（仅计算路径，绝不创建目录）。"""
+    """返回配置指向的 arena_repo 绝对路径（仅计算路径，绝不创建目录）。
+
+    路径来源优先级（跨机器部署设计，Ubuntu 开箱即用）：
+    1. 环境变量 BUGRELAY_ARENA_REPO（可绝对/相对/`~` 开头，无需改文件即可换机器）；
+    2. config.json 的 arena_repo_path（相对路径基于 harness_repo 根解析，支持 `~`）。
+    """
     cfg = cfg or load_config()
-    p = Path(cfg["arena_repo_path"])
+    raw = os.environ.get("BUGRELAY_ARENA_REPO") or str(cfg.get("arena_repo_path", "../arena_repo"))
+    p = Path(os.path.expanduser(raw))
     if not p.is_absolute():
         p = BASE_DIR / p
     return p.resolve()

@@ -6,6 +6,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# 虚拟环境（run.sh 创建）
+.venv/
+
 # arena_repo 完整备份体积大，不入库（保留占位）
 backups/*
 !backups/.gitkeep
