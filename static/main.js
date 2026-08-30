@@ -395,9 +395,20 @@ async function saveModelEdits() {
 function renderStepper(st, currentStep) {
   // 当前所在步骤（等待材料的位置）：answering->1，proposing->3
   const waiting = currentStep || (st.phase === "proposing" ? 3 : 1);
+  const cur = st.current_player || "";
+  const players = st.players || {};
+  const curName = (players[cur] || {}).name || cur;
+  // 四阶段主舞台：每张卡的「谁在做」文案
+  const whoTexts = [
+    cur ? cur + " 正在改码" : "等待选手",
+    "框架跑测试",
+    cur ? cur + " 写下一棒需求" : "等待选手",
+    "验题模型重实现",
+  ];
   for (let n = 1; n <= 4; n++) {
     const el = $("step-" + n);
-    let cls = "step";
+    el.querySelector(".stage-who").textContent = whoTexts[n - 1];
+    let cls = "stage-card";
     if (state.runningStep === n) {
       cls += " ongoing";        // 评测运行中（判定/自证）
     } else if (n < waiting) {
@@ -408,7 +419,7 @@ function renderStepper(st, currentStep) {
     el.className = cls;
     // 淘汰/比赛结束时全部置灰，只保留历史完成态
     if (st.status === "finished" && n === waiting) {
-      el.className = "step";
+      el.className = "stage-card";
     }
   }
 }
