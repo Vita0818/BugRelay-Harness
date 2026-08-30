@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 
@@ -32,6 +32,14 @@
   <div class="stat"><label>淘汰 Out</label><b id="st-eliminated">–</b></div>
   <div class="stat"><label>arena_repo</label><b id="st-arena">–</b></div>
   <div class="stat"><label>最近结果 Last</label><b id="st-last">–</b></div>
+</section>
+
+<!-- 选手席：全部选手的存活/淘汰/当前状态 -->
+<section class="roster" id="roster" aria-label="选手席 / Roster">
+  <header class="section-heading">
+    <h3>选手席<span lang="en" id="roster-sub">Roster</span></h3>
+  </header>
+  <div id="roster-grid" class="roster-grid"></div>
 </section>
 
 <!-- 四步流程：作答 → 判定 → 出题 → 自证（每位选手每轮固定四步） -->
@@ -157,6 +165,6 @@
 
 </div><!-- /.shell -->
 
-<script src="/static/main.js"></script>
+<script src="/static/main.js?v=4"></script>
 </body>
 </html>

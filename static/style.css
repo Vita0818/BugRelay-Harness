@@ -145,6 +145,73 @@ code {
   border-radius: 0.4rem;
 }
 
+/* ---------- 选手席（roster：三字码 + 总称，当前=黑章，淘汰=删除线） ---------- */
+.roster {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  background: var(--background);
+  box-shadow: var(--card-shadow);
+  padding: 1.05rem 1.1rem 1.1rem;
+}
+.roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.8rem, 1fr));
+  gap: 0.5rem;
+}
+.chip {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.7rem 0.55rem;
+  background: var(--background);
+  cursor: default;
+  transition: background-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+.chip:hover { background: var(--hover); box-shadow: 0 6px 16px rgba(10, 10, 10, 0.06); }
+.chip-head { overflow: hidden; }
+.chip-code {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.chip-score {
+  float: right;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.chip-name {
+  margin-top: 0.12rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip-score {
+  float: right;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+/* 当前选手：黑底反白（站内 ::selection 语言），全页唯一焦点 */
+.chip.current {
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}
+.chip.current:hover { background: #262626; }
+.chip.current .chip-name { color: #b3b3b3; }
+.chip.current .chip-score { color: #b3b3b3; }
+/* 淘汰：删除线 + 置灰 */
+.chip.out { opacity: 0.45; }
+.chip.out:hover { box-shadow: none; }
+.chip.out .chip-code { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+
 /* ---------- 四步流程（focus-card 语言：大编号 + 双语标题） ---------- */
 .stepper {
   display: grid;

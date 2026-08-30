@@ -59,13 +59,30 @@ function renderState(st, inbox, currentStep) {
   const inboxProposal = inbox && inbox.proposal;
 
   $("st-round").textContent = st.round;
-  $("st-player").textContent = st.current_player || "–";
+  // 当前选手：三字码 + 总称（悬停显示实际模型）
+  const players = st.players || {};
+  const cur = st.current_player;
+  const curInfo = cur && players[cur];
+  const playerEl = $("st-player");
+  playerEl.textContent = cur ? (curInfo ? cur + " · " + curInfo.name : cur) : "–";
+  if (curInfo && curInfo.model) {
+    playerEl.title = curInfo.model;
+  } else {
+    playerEl.removeAttribute("title");
+  }
+  renderRoster(st);
   renderStepper(st, currentStep);
 
-  $("st-survivors").textContent = (st.survivors || []).join(" ") || "（无）";
-  $("st-survivors").className = (st.survivors || []).length ? "ok" : "bad";
-  $("st-eliminated").textContent = (st.eliminated || []).join(" ") || "（无）";
-  $("st-eliminated").className = (st.eliminated || []).length ? "bad" : "";
+  // 存活/淘汰：人数为主（32 人名单太长），完整名单放悬停提示
+  const surv = st.survivors || [];
+  const elim = st.eliminated || [];
+  const survEl = $("st-survivors");
+  survEl.textContent = surv.length + " / " + (st.order || surv).length + " 人";
+  survEl.title = surv.join(" · ");
+  survEl.className = surv.length ? "ok" : "bad";
+  const elimEl = $("st-eliminated");
+  elimEl.textContent = elim.length ? elim.length + " · " + elim.join(" ") : "0";
+  elimEl.className = elim.length ? "bad" : "";
 
   const arenaEl = $("st-arena");
   arenaEl.textContent = st.arena_ready ? "就绪" : "未就绪";
@@ -223,6 +240,43 @@ async function loadFile(path, name) {
     tip.className = "line";
     tip.textContent = "…（共 " + lines.length + " 行，仅显示前 " + MAX + " 行）";
     view.appendChild(tip);
+  }
+}
+
+/* ---------------- 选手席 ---------------- */
+
+function renderRoster(st) {
+  const grid = $("roster-grid");
+  if (!grid) { return; }
+  grid.innerHTML = "";
+  const players = st.players || {};
+  const order = st.order && st.order.length ? st.order : (st.survivors || []);
+  const survivors = st.survivors || [];
+  const eliminated = st.eliminated || [];
+  const scores = st.scores || {};
+  for (const code of order) {
+    const info = players[code] || {};
+    const chip = el("div", { class: "chip" });
+    if (code === st.current_player && st.status !== "finished") {
+      chip.classList.add("current");
+    } else if (eliminated.indexOf(code) !== -1) {
+      chip.classList.add("out");
+    }
+    const head = el("div", { class: "chip-head" });
+    head.appendChild(el("span", { class: "chip-code" }, code));
+    if (typeof scores[code] === "number") {
+      head.appendChild(el("span", { class: "chip-score" }, String(scores[code])));
+    }
+    chip.appendChild(head);
+    chip.appendChild(el("div", { class: "chip-name" }, info.name || ""));
+    if (info.model) {
+      chip.title = code + " — " + info.model + (eliminated.indexOf(code) !== -1 ? " （已淘汰）" : "");
+    }
+    grid.appendChild(chip);
+  }
+  const sub = $("roster-sub");
+  if (sub) {
+    sub.textContent = "Roster · " + order.length + " · alive " + survivors.length;
   }
 }
 

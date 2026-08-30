@@ -70,7 +70,15 @@ uvicorn app:app --host 127.0.0.1 --port 8080
 
 ## 4. 赛制与裁判逻辑（实现说明）
 
-选手默认 `["A","B","C","D"]` 轮流接力，每轮三步：
+选手轮流接力，每轮三步。选手名单在 `state/match.json`：
+
+- `order`：接力顺序，使用**三字码**（如 `FBL`、`OPS`），日志与状态均用三字码标识；
+- `players`：三字码 → `{ "name": 总称, "model": 实际模型 }` 的映射，控制台选手席与 CLI
+  显示总称，悬停/括号内显示实际模型。模型迭代时只改 `model` 字段，三字码与历史记录不变。
+
+当前阵容 32 位（Claude 系 / GPT 系 / Gemini 系 / Grok / Muse 系 / Nemotron / Mistral /
+DeepSeek 系 / GLM 系 / Kimi / MiniMax / Qwen 系 / Hunyuan / Seed 系 / LongCat / StepFun /
+Mimo 系），增删选手只需同步改 `order`、`survivors`、`players`、`scores` 四处。
 
 1. **答题**：当前选手按上一棒留下的 `next_prompt.md`（仅需求，不含测试）修改 arena_repo 业务代码。
    人类导入其改动后点「验收答题」→ 框架备份 → 只把上传内容应用到 `src/`（严禁触碰 `tests/`，

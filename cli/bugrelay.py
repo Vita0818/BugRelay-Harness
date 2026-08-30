@@ -58,6 +58,17 @@ def _step_label(state) -> str:
     return "3/4 出题（等待需求+隐藏测试）" if state.get("phase") == "proposing" else "1/4 作答（等待业务代码改动）"
 
 
+def _player_label(state, code) -> str:
+    """选手显示：三字码 · 总称（实际模型）。"""
+    info = (state.get("players") or {}).get(code)
+    if not info:
+        return str(code)
+    label = "%s · %s" % (code, info.get("name", ""))
+    if info.get("model"):
+        label += "（%s）" % info["model"]
+    return label
+
+
 def cmd_status(_args) -> int:
     _bootstrap()
     state = load_state()
@@ -73,11 +84,13 @@ def cmd_status(_args) -> int:
         table.add_column("值")
         table.add_row("状态", str(state.get("status")))
         table.add_row("轮次", str(state.get("round")))
-        table.add_row("当前选手", str(state.get("current_player")))
+        table.add_row("当前选手", _player_label(state, state.get("current_player")))
         table.add_row("当前步骤", "作答→判定→出题→自证，当前：%s" % _step_label(state))
         table.add_row("阶段", "answering=待验收答题 / proposing=待校验出题 -> %s" % state.get("phase"))
-        table.add_row("存活", ", ".join(state.get("survivors", [])) or "（无）")
-        table.add_row("淘汰", ", ".join(state.get("eliminated", [])) or "（无）")
+        surv = state.get("survivors") or []
+        table.add_row("存活", "%d 人：%s" % (len(surv), ", ".join(surv)))
+        elim = state.get("eliminated") or []
+        table.add_row("淘汰", ("%d 人：%s" % (len(elim), ", ".join(elim))) if elim else "（无）")
         table.add_row("arena_ready", "就绪" if state.get("arena_ready") else "未就绪（arena_repo 不存在或不是 git 仓库）")
         table.add_row("inbox 材料", "、".join(inbox_parts) or "（空）")
         table.add_row("当前需求", str(state.get("current_prompt_file")) or "（等待首轮需求）")
@@ -89,11 +102,13 @@ def cmd_status(_args) -> int:
     else:
         print("状态      : %s" % state.get("status"))
         print("轮次      : %s" % state.get("round"))
-        print("当前选手  : %s" % state.get("current_player"))
+        print("当前选手  : %s" % _player_label(state, state.get("current_player")))
         print("当前步骤  : %s" % _step_label(state))
         print("阶段      : %s" % state.get("phase"))
-        print("存活      : %s" % ", ".join(state.get("survivors", [])))
-        print("淘汰      : %s" % (", ".join(state.get("eliminated", [])) or "（无）"))
+        surv = state.get("survivors") or []
+        print("存活      : %d 人：%s" % (len(surv), ", ".join(surv)))
+        elim = state.get("eliminated") or []
+        print("淘汰      : %s" % (("%d 人：%s" % (len(elim), ", ".join(elim))) if elim else "（无）"))
         print("arena     : %s" % ("就绪" if state.get("arena_ready") else "未就绪"))
         print("inbox     : %s" % ("、".join(inbox_parts) or "（空）"))
         print("当前需求  : %s" % (state.get("current_prompt_file") or "（等待首轮需求）"))

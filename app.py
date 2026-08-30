@@ -49,11 +49,14 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
-    """单页控制台。"""
+    """单页控制台。HTML 禁缓存，保证改动后刷新即生效（静态资源靠 ?v= 版本号更新）。"""
     html_path = BASE_DIR / "templates" / "index.html"
     if not html_path.exists():
         return HTMLResponse("<h1>Bug Relay</h1><p>templates/index.html 缺失</p>", status_code=200)
-    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        html_path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # ---------------------------------------------------------------------------
