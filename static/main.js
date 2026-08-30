@@ -54,6 +54,27 @@ function hideBanner() {
   $("banner").className = "banner hidden";
 }
 
+/* ---------------- 判定全屏定格（录屏高潮镜头） ---------------- */
+
+let verdictTimer = null;
+
+function showVerdict(word, detail, sub) {
+  const v = $("verdict");
+  $("verdict-word").textContent = word || "–";
+  $("verdict-word").className = "verdict-word " + (word === "PASS" ? "pass" : "fail");
+  $("verdict-detail").textContent = detail || "";
+  $("verdict-sub").textContent = sub || "";
+  v.classList.remove("hidden");
+  if (verdictTimer) {
+    clearTimeout(verdictTimer);
+  }
+  verdictTimer = setTimeout(hideVerdict, 2200); // 全屏定格约 2 秒
+}
+
+function hideVerdict() {
+  $("verdict").classList.add("hidden");
+}
+
 /* ---------------- 赛况渲染 ---------------- */
 
 function renderState(st, inbox, currentStep) {
@@ -92,9 +113,6 @@ function renderState(st, inbox, currentStep) {
   const arenaEl = $("st-arena");
   arenaEl.textContent = st.arena_ready ? "就绪" : "未就绪";
   arenaEl.className = st.arena_ready ? "ok" : "bad";
-  const rulesEl = $("st-rules");
-  rulesEl.textContent = st.arena_ready ? (st.rules_injected ? "已注入" : "待注入") : "–";
-  rulesEl.className = st.rules_injected ? "ok" : "";
 
   const lastEl = $("st-last");
   lastEl.textContent = st.last_result || "–";
@@ -108,6 +126,16 @@ function renderState(st, inbox, currentStep) {
     showBanner("arena_repo 未就绪：请确认 config.json 的 arena_repo_path 指向已存在的独立 git 仓库（含 src/ 与 tests/）。在此之前仅能浏览页面，无法评测。", "warn");
   } else {
     hideBanner();
+  }
+
+  // 象征性需求提示：只示意"需求已给出"，不展示全文（全文在调试抽屉里）
+  const ps = $("prompt-symbol");
+  if (st.current_prompt_file) {
+    ps.textContent = "需求已给出 next_prompt.md";
+    ps.className = "prompt-symbol given";
+  } else {
+    ps.textContent = "等待首轮需求";
+    ps.className = "prompt-symbol";
   }
 
   // 底部两行测试结果（只显示总结果与计数）
@@ -398,7 +426,7 @@ function renderStepper(st, currentStep) {
   const cur = st.current_player || "";
   const players = st.players || {};
   const curName = (players[cur] || {}).name || cur;
-  // 四阶段主舞台：每张卡的「谁在做」文案
+  // 接力赛道节点：每站的「谁在做」文案
   const whoTexts = [
     cur ? cur + " 正在改码" : "等待选手",
     "框架跑测试",
@@ -407,8 +435,8 @@ function renderStepper(st, currentStep) {
   ];
   for (let n = 1; n <= 4; n++) {
     const el = $("step-" + n);
-    el.querySelector(".stage-who").textContent = whoTexts[n - 1];
-    let cls = "stage-card";
+    el.querySelector(".tnode-who").textContent = whoTexts[n - 1];
+    let cls = "tnode";
     if (state.runningStep === n) {
       cls += " ongoing";        // 评测运行中（判定/自证）
     } else if (n < waiting) {
@@ -417,9 +445,13 @@ function renderStepper(st, currentStep) {
       cls += " active";         // 等待材料（当前）
     }
     el.className = cls;
-    // 淘汰/比赛结束时全部置灰，只保留历史完成态
     if (st.status === "finished" && n === waiting) {
-      el.className = "stage-card";
+      el.className = "tnode";
+    }
+    // 节点间箭头：与节点完成态一致（n < waiting 即已走过）
+    const arrow = $("arrow-" + n);
+    if (arrow) {
+      arrow.className = "tarrow" + (n < waiting ? " passed" : "");
     }
   }
 }
@@ -522,13 +554,13 @@ async function judgeAnswer() {
   const data = await api("/api/judge-answer", { method: "POST" });
   state.runningStep = null;
   if (data.ok) {
-    const line = (data.result === "PASS") ? "✔ " : "✘ ";
     const h = data.history, d = data.hidden;
-    let text = line + (data.message || data.result);
-    if (h && d) {
-      text += "\n历史测试 " + h.passed + "/" + h.total + " · 隐藏测试 " + d.passed + "/" + d.total;
-    }
-    setMsg(msg, text, data.result === "PASS" ? "ok" : "err");
+    showVerdict(
+      data.result,
+      (h && d) ? "历史 " + h.passed + "/" + h.total + " · 隐藏 " + d.passed + "/" + d.total : "",
+      data.message || ""
+    );
+    setMsg(msg, data.message || data.result, data.result === "PASS" ? "ok" : "err");
   } else {
     setMsg(msg, "未执行: " + (data.error || data.reason || "未知错误"), "err");
   }
@@ -570,13 +602,15 @@ async function judgeProposal() {
   const data = await api("/api/judge-proposal", { method: "POST" });
   state.runningStep = null;
   if (data.ok) {
-    const line = (data.result === "PASS") ? "✔ " : "✘ ";
-    let text = line + (data.message || data.result);
-    if (data.history && data.hidden) {
-      text += "\n历史测试 " + data.history.passed + "/" + data.history.total +
-              " · 隐藏测试 " + data.hidden.passed + "/" + data.hidden.total;
-    }
-    setMsg(msg, text, data.result === "PASS" ? "ok" : "err");
+    showVerdict(
+      data.result,
+      (data.history && data.hidden)
+        ? "历史 " + data.history.passed + "/" + data.history.total +
+          " · 隐藏 " + data.hidden.passed + "/" + data.hidden.total
+        : "",
+      data.message || ""
+    );
+    setMsg(msg, data.message || data.result, data.result === "PASS" ? "ok" : "err");
   } else {
     setMsg(msg, "未执行: " + (data.error || data.reason || "未知错误"), "err");
   }
@@ -758,6 +792,11 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-edit-models").addEventListener("click", enterModelEdit);
   $("btn-models-save").addEventListener("click", saveModelEdits);
   $("btn-models-cancel").addEventListener("click", exitModelEdit);
+  // 调试抽屉（录屏时保持关闭）
+  $("btn-debug").addEventListener("click", () => $("debug-drawer").classList.toggle("is-hidden"));
+  $("btn-debug-close").addEventListener("click", () => $("debug-drawer").classList.add("is-hidden"));
+  // 判定定格可点击提前关闭
+  $("verdict").addEventListener("click", hideVerdict);
   // 编辑模式键盘：回车保存，Esc 取消
   $("roster-grid").addEventListener("keydown", (e) => {
     if (!state.editingModels) { return; }

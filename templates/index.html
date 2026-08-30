@@ -7,97 +7,62 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=14">
+<link rel="stylesheet" href="/static/style.css?v=16">
 </head>
 <body>
 
-<!-- 顶栏：赛况一行（全文信息） -->
+<!-- 顶栏：赛况横幅（录屏主信息） -->
 <header class="topbar">
   <span class="brand">BUG RELAY</span>
-  <span class="now">第 <b id="st-round">–</b> 轮</span>
-  <b id="st-player" class="now-player">–</b>
+  <span class="hero-round">第 <b id="st-round">–</b> 轮</span>
+  <b id="st-player" class="hero-player">–</b>
   <span class="meta">
     存 <b id="st-survivors">–</b>
     <span class="sep">·</span> 淘 <b id="st-eliminated">–</b>
-    <span class="sep">·</span> arena <b id="st-arena">–</b>
-    <span class="sep">·</span> 规范 <b id="st-rules">–</b>
+    <span class="sep">·</span> <b id="st-arena">–</b>
+    <span class="sep">·</span> 最近 <b id="st-last">–</b>
   </span>
   <span class="spacer"></span>
-  <span class="meta">最近 <b id="st-last">–</b></span>
   <button id="btn-draw" class="btn">抽签</button>
   <button id="btn-restore" class="btn">还原</button>
+  <button id="btn-debug" class="btn ghost">调试</button>
 </header>
 
-<!-- 四阶段：紧凑横排卡片（当前黑底聚光灯） -->
-<main id="stage" class="stage">
-  <article class="stage-card" id="step-1">
-    <div class="stage-num">1</div>
-    <div class="stage-body">
-      <h2 class="stage-name">作答</h2>
-      <p class="stage-who">等待选手</p>
-      <p class="stage-state">等待 inbox/answer</p>
+<!-- 主画面：接力赛道（四阶段）+ 象征性需求提示 -->
+<main class="arena">
+  <div class="track">
+    <div class="tnode" id="step-1">
+      <div class="tnode-num">1</div>
+      <div class="tnode-name">作答</div>
+      <div class="tnode-who">等待选手</div>
+      <div class="tnode-state">等待交付</div>
     </div>
-  </article>
-  <article class="stage-card" id="step-2">
-    <div class="stage-num">2</div>
-    <div class="stage-body">
-      <h2 class="stage-name">判定</h2>
-      <p class="stage-who">框架跑测试</p>
-      <p class="stage-state">历史 + 隐藏全绿则过</p>
+    <div class="tarrow" id="arrow-1"></div>
+    <div class="tnode" id="step-2">
+      <div class="tnode-num">2</div>
+      <div class="tnode-name">判定</div>
+      <div class="tnode-who">框架跑测试</div>
+      <div class="tnode-state">历史 + 隐藏</div>
     </div>
-  </article>
-  <article class="stage-card" id="step-3">
-    <div class="stage-num">3</div>
-    <div class="stage-body">
-      <h2 class="stage-name">出题</h2>
-      <p class="stage-who">等待选手</p>
-      <p class="stage-state">等待 inbox/next_prompt</p>
+    <div class="tarrow" id="arrow-2"></div>
+    <div class="tnode" id="step-3">
+      <div class="tnode-num">3</div>
+      <div class="tnode-name">出题</div>
+      <div class="tnode-who">等待选手</div>
+      <div class="tnode-state">给下一棒需求</div>
     </div>
-  </article>
-  <article class="stage-card" id="step-4">
-    <div class="stage-num">4</div>
-    <div class="stage-body">
-      <h2 class="stage-name">自证</h2>
-      <p class="stage-who">验题模型重实现</p>
-      <p class="stage-state">被隐藏测试考核</p>
+    <div class="tarrow" id="arrow-3"></div>
+    <div class="tnode" id="step-4">
+      <div class="tnode-num">4</div>
+      <div class="tnode-name">自证</div>
+      <div class="tnode-who">验题模型重实现</div>
+      <div class="tnode-state">被隐藏测试考核</div>
     </div>
-  </article>
+  </div>
+  <div class="prompt-symbol" id="prompt-symbol">○ 等待首轮需求</div>
 </main>
 
-<!-- 战场三栏（填满余下空间） -->
-<section class="battle">
-
-  <section class="col col-left">
-    <details id="roster" class="roster">
-      <summary>选手席<span id="roster-sub" class="roster-sub"></span>
-        <span class="roster-actions">
-          <button id="btn-edit-models" class="mini">编辑模型</button>
-          <button id="btn-models-save" class="mini dark is-hidden">保存</button>
-          <button id="btn-models-cancel" class="mini is-hidden">取消</button>
-        </span>
-      </summary>
-      <div id="roster-grid" class="roster-grid"></div>
-      <div id="roster-msg" class="op-msg"></div>
-    </details>
-    <div class="col-label">arena_repo</div>
-    <div id="tree" class="tree"><div class="empty">加载中…</div></div>
-    <div id="file-title" class="file-title">点击文件查看</div>
-    <pre id="fileview" class="fileview"></pre>
-  </section>
-
-  <section class="col col-mid">
-    <div class="col-label">当前需求 next_prompt.md</div>
-    <pre id="prompt" class="prompt">等待首轮需求</pre>
-  </section>
-
-  <section class="col col-right">
-    <div class="col-label">实时日志</div>
-    <div id="log" class="log"><div class="empty">暂无日志</div></div>
-  </section>
-
-</section>
-
-<!-- 信息带：计数 + 反馈 + 主按钮 -->
+<!-- 底栏：比分 + 主操作 -->
 <footer class="actionbar">
   <span class="scores">
     历史 <b id="t-history" class="badge">–</b><span id="t-history-count" class="count"></span>
@@ -108,25 +73,74 @@
     <span id="answer-msg" class="op-msg"></span><span id="proposal-msg" class="op-msg"></span><span id="rules-msg" class="op-msg"></span>
   </span>
   <span class="spacer"></span>
-  <details class="upload">
-    <summary>手动上传</summary>
-    <div class="upload-pop">
-      <label>答题文件<input type="file" id="answer-files" multiple accept=".zip,.py,.txt,.json,.toml,.yaml,.yml,.cfg,.ini,.md,.sh,.js,.html,.css"></label>
-      <button id="btn-upload-answer" class="mini">上传答题</button>
-      <label>next_prompt.md<input type="file" id="proposal-prompt" accept=".md,.txt"></label>
-      <label>hidden_tests.py<input type="file" id="proposal-test" accept=".py"></label>
-      <button id="btn-upload-proposal" class="mini">上传出题材料</button>
-      <button id="btn-inject-rules" class="mini">重注入规范</button>
-    </div>
-  </details>
-  <button id="btn-judge-answer" class="btn primary">验收答题</button>
-  <button id="btn-judge-proposal" class="btn primary">校验出题并交棒</button>
+  <button id="btn-judge-answer" class="btn primary big">验收答题</button>
+  <button id="btn-judge-proposal" class="btn primary big">校验出题并交棒</button>
 </footer>
 
-<!-- 浮层横幅（不占布局空间） -->
+<!-- 判定全屏定格（2 秒自动消失） -->
+<div id="verdict" class="verdict hidden" role="alert" aria-live="assertive">
+  <div class="verdict-label">判定 VERDICT</div>
+  <div class="verdict-word" id="verdict-word">PASS</div>
+  <div class="verdict-detail" id="verdict-detail"></div>
+  <div class="verdict-sub" id="verdict-sub"></div>
+</div>
+
+<!-- 调试抽屉：录屏外的一切操作细节（选手席/文件/需求全文/日志/手动上传） -->
+<aside id="debug-drawer" class="debug-drawer is-hidden" aria-label="调试面板">
+  <div class="debug-head">
+    <span class="debug-title">调试面板</span>
+    <button id="btn-debug-close" class="mini">关闭</button>
+  </div>
+  <div class="debug-body">
+
+    <details id="roster" class="dblock">
+      <summary>选手席<span id="roster-sub" class="roster-sub"></span>
+        <span class="roster-actions">
+          <button id="btn-edit-models" class="mini">编辑模型</button>
+          <button id="btn-models-save" class="mini dark is-hidden">保存</button>
+          <button id="btn-models-cancel" class="mini is-hidden">取消</button>
+        </span>
+      </summary>
+      <div id="roster-grid" class="roster-grid"></div>
+      <div id="roster-msg" class="op-msg"></div>
+    </details>
+
+    <details class="dblock">
+      <summary>arena_repo 文件</summary>
+      <div id="tree" class="tree"><div class="empty">加载中…</div></div>
+      <div id="file-title" class="file-title">点击文件查看</div>
+      <pre id="fileview" class="fileview"></pre>
+    </details>
+
+    <details class="dblock">
+      <summary>当前需求 next_prompt.md</summary>
+      <pre id="prompt" class="prompt">等待首轮需求</pre>
+    </details>
+
+    <details class="dblock">
+      <summary>实时日志</summary>
+      <div id="log" class="log"><div class="empty">暂无日志</div></div>
+    </details>
+
+    <details class="dblock">
+      <summary>手动上传</summary>
+      <div class="upload-block">
+        <label>答题文件（.zip 或多个文件）<input type="file" id="answer-files" multiple accept=".zip,.py,.txt,.json,.toml,.yaml,.yml,.cfg,.ini,.md,.sh,.js,.html,.css"></label>
+        <button id="btn-upload-answer" class="mini">上传答题</button>
+        <label>next_prompt.md<input type="file" id="proposal-prompt" accept=".md,.txt"></label>
+        <label>hidden_tests.py<input type="file" id="proposal-test" accept=".py"></label>
+        <button id="btn-upload-proposal" class="mini">上传出题材料</button>
+        <button id="btn-inject-rules" class="mini">重注入规范</button>
+      </div>
+    </details>
+
+  </div>
+</aside>
+
+<!-- 浮层横幅 -->
 <div id="banner" class="banner hidden"></div>
 
-<!-- 抽签动画模态：滚动抽出 → 逐位锁定 → 完整顺序 -->
+<!-- 抽签动画模态 -->
 <div id="draw-modal" class="draw-modal is-hidden" aria-hidden="true" role="dialog" aria-label="顺序抽签">
   <div class="draw-panel">
     <header class="draw-head">
@@ -145,6 +159,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=14"></script>
+<script src="/static/main.js?v=16"></script>
 </body>
 </html>
