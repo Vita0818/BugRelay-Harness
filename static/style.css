@@ -1,4 +1,4 @@
-/* Bug Relay 控制台 —— 舞台版（录屏：四阶段是绝对主角）
+/* Bug Relay 控制台 —— 四阶段紧凑卡片 + 三栏战场（录屏单屏版）
    风格沿个人主页：黑白灰 + JetBrains Mono，PASS=粗体近黑，FAIL=黑底白字反白章 */
 
 :root {
@@ -8,7 +8,7 @@
   --faint: #a3a3a3;
   --line: #e5e5e5;
   --hover: #fafafa;
-  --card-radius: 1.1rem;
+  --card-radius: 0.9rem;
   --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -17,11 +17,11 @@ html, body { height: 100%; }
 
 body {
   margin: 0;
-  overflow: hidden;                      /* 单屏铁律 */
+  overflow: hidden;                      /* 单屏铁律：整页不滚动 */
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--mono);
@@ -39,78 +39,63 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 .sep { color: var(--faint); margin: 0 2px; }
 .is-hidden { display: none !important; }
 
-/* ---------- 顶栏（赛况一行，安静） ---------- */
+/* ---------- 顶栏（赛况一行，全文信息） ---------- */
 .topbar {
   display: flex;
   align-items: center;
   gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
   padding: 8px 14px;
   white-space: nowrap;
   overflow: hidden;
 }
-.brand { font-weight: 800; letter-spacing: 0.1em; font-size: 13px; }
+.brand { font-weight: 800; letter-spacing: 0.08em; font-size: 13px; }
 .now { color: var(--muted); }
-.now b { font-size: 14px; }
-.now-player { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+.now b { font-size: 15px; }
+.now-player { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
 .meta { color: var(--muted); font-size: 11.5px; }
-.rules-dot {
-  display: inline-block;
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  border: 1px solid var(--muted);
-  margin-left: 4px;
-  vertical-align: middle;
-}
-.rules-dot.ok { background: var(--foreground); border-color: var(--foreground); }
-.last-badge {
-  font-weight: 700;
-  font-size: 13px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 1px 10px;
-}
-.last-badge.ok  { color: var(--foreground); border-color: var(--foreground); font-weight: 800; }
-.last-badge.bad { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
+.meta b { font-weight: 700; }
 
-/* ---------- 主舞台：四阶段（视觉主角，占据大部分高度） ---------- */
+/* ---------- 四阶段：紧凑横排卡片 ---------- */
 .stage {
-  flex: 1;
+  flex: 0 0 auto;                        /* 高度由内容决定，不拉伸 */
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  min-height: 0;
+  gap: 10px;
 }
 .stage-card {
   position: relative;
   display: flex;
-  flex-direction: column;
+  gap: 14px;
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
-  padding: 18px 18px 14px;
+  padding: 12px 16px 10px;
   background: var(--background);
   overflow: hidden;
   transition: background 0.15s, border-color 0.15s;
 }
 .stage-num {
-  font-size: 4.4rem;
+  flex: none;
+  font-size: 2.6rem;
   font-weight: 800;
-  line-height: 0.9;
+  line-height: 0.85;
   letter-spacing: -0.04em;
   color: var(--line);
+  align-self: flex-start;
 }
-.stage-card.active .stage-num { color: var(--foreground); }
+.stage-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .stage-name {
-  margin: 10px 0 4px;
-  font-size: 1.85rem;
+  margin: 0 0 2px;
+  font-size: 1.25rem;
   font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--muted);
+  line-height: 1.1;
 }
-.stage-card.active .stage-name { color: var(--foreground); }
 .stage-who {
-  margin: 2px 0;
-  font-size: 13px;
+  margin: 0;
+  font-size: 11.5px;
   font-weight: 700;
   color: var(--muted);
   white-space: nowrap;
@@ -118,9 +103,9 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   text-overflow: ellipsis;
 }
 .stage-state {
-  margin: auto 0 0;                      /* 沉底 */
-  padding-top: 8px;
-  font-size: 11px;
+  margin: 6px 0 0;
+  padding-top: 5px;
+  font-size: 10.5px;
   color: var(--faint);
   white-space: nowrap;
   overflow: hidden;
@@ -129,14 +114,11 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 }
 
 /* 当前阶段：黑底反白（聚光灯） */
-.stage-card.active {
-  background: var(--foreground);
-  border-color: var(--foreground);
-}
-.stage-card.active .stage-num { color: rgba(255, 255, 255, 0.28); }
+.stage-card.active { background: var(--foreground); border-color: var(--foreground); }
+.stage-card.active .stage-num { color: rgba(255, 255, 255, 0.3); }
 .stage-card.active .stage-name { color: var(--background); }
 .stage-card.active .stage-who { color: #e5e5e5; }
-.stage-card.active .stage-state { color: #a3a3a3; border-top-color: rgba(255, 255, 255, 0.2); }
+.stage-card.active .stage-state { color: #a3a3a3; border-top-color: rgba(255, 255, 255, 0.22); }
 
 /* 已完成：描边 + 编号实心 + 勾 */
 .stage-card.done { border-color: var(--foreground); }
@@ -146,29 +128,176 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 .stage-card.done::after {
   content: "✓";
   position: absolute;
-  top: 10px; right: 14px;
-  font-size: 15px;
+  top: 8px; right: 12px;
+  font-size: 14px;
   font-weight: 800;
   color: var(--foreground);
 }
+
 /* 判定/自证运行中：黑底 + 呼吸 */
-.stage-card.ongoing {
-  background: var(--foreground);
-  border-color: var(--foreground);
-  animation: stage-breathe 1.1s ease-in-out infinite;
-}
-.stage-card.ongoing .stage-num { color: rgba(255, 255, 255, 0.28); }
+.stage-card.ongoing { background: var(--foreground); border-color: var(--foreground); animation: stage-breathe 1.1s ease-in-out infinite; }
+.stage-card.ongoing .stage-num { color: rgba(255, 255, 255, 0.3); }
 .stage-card.ongoing .stage-name { color: var(--background); }
 .stage-card.ongoing .stage-who { color: #e5e5e5; }
-.stage-card.ongoing .stage-state { color: #a3a3a3; border-top-color: rgba(255, 255, 255, 0.2); }
+.stage-card.ongoing .stage-state { color: #a3a3a3; border-top-color: rgba(255, 255, 255, 0.22); }
 .stage-card.ongoing .stage-state::before { content: "正在评测… "; color: var(--background); font-weight: 800; }
 @keyframes stage-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.82; }
 }
-/* 失败烙印（上一步判 FAIL 时短暂显示） */
+
+/* 失败烙印 */
 .stage-card.failed { border-color: var(--foreground); }
 .stage-card.failed .stage-name { text-decoration: line-through; }
+
+/* ---------- 战场三栏（填满余下空间） ---------- */
+.battle {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  overflow: hidden;
+  background: var(--background);
+}
+.col-left  { flex: 0 0 23%; }
+.col-mid   { flex: 1 1 auto; }
+.col-right { flex: 0 0 24%; }
+
+.col-label {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 12px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty { color: var(--faint); padding: 10px 12px; font-size: 11.5px; }
+
+/* 左栏：选手席（折叠） + 文件树 + 文件预览 */
+.roster { border-bottom: 1px solid var(--line); }
+.roster summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.roster summary::-webkit-details-marker { display: none; }
+.roster summary::before { content: "▸"; font-size: 9px; color: var(--faint); }
+.roster[open] summary::before { content: "▾"; }
+.roster summary:hover { background: var(--hover); }
+.roster-sub { color: var(--faint); font-weight: 600; font-size: 10.5px; }
+.roster-actions { margin-left: auto; display: inline-flex; gap: 5px; }
+.roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.2rem, 1fr));
+  gap: 4px;
+  padding: 0 10px 8px;
+  max-height: 30vh;
+  overflow: auto;
+}
+.chip {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip .pos { margin-right: 4px; color: var(--faint); font-size: 9.5px; }
+.chip.current { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
+.chip.current .pos { color: #b3b3b3; }
+.chip.out { color: var(--faint); text-decoration: line-through; border-style: dashed; }
+.chip-model-input {
+  font: inherit;
+  font-size: 10px;
+  width: 100%;
+  border: 1px solid var(--foreground);
+  border-radius: 5px;
+  padding: 2px 4px;
+}
+
+.tree { flex: 1 1 38%; overflow: auto; min-height: 0; }
+.tree ul { list-style: none; margin: 0; padding: 0 6px 8px; }
+.tree li { margin: 0; }
+.node-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1.5px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.node-row:hover { background: var(--hover); }
+.node-row.selected { background: var(--foreground); color: var(--background); }
+.node-dir { font-weight: 700; }
+.toggle { color: var(--faint); font-size: 9px; width: 9px; flex: none; }
+
+.file-title {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10.5px;
+  padding: 5px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fileview {
+  flex: 1 1 55%;
+  margin: 0;
+  overflow: auto;
+  min-height: 0;
+  padding: 2px 12px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.line { display: flex; gap: 8px; white-space: pre; }
+.ln { color: var(--faint); flex: none; width: 3ch; text-align: right; }
+
+/* 中栏：需求全文 */
+.prompt {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  padding: 4px 14px 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 右栏：日志（最新在上） */
+.log { flex: 1; overflow: auto; padding: 0 6px 8px; }
+.log-item { padding: 5px 8px; border-radius: 7px; }
+.log-item:hover { background: var(--hover); }
+.log-head { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.log-ts { color: var(--faint); font-size: 10px; flex: none; }
+.log-action { font-weight: 600; font-size: 11.5px; }
+.log-player { color: var(--muted); font-size: 10.5px; }
+.log-detail { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.log-item.r-PASS .log-action { font-weight: 800; }
+.log-item.r-FAIL .log-action { background: var(--foreground); color: var(--background); padding: 0 5px; border-radius: 4px; }
 
 /* ---------- 信息带（计数 + 反馈 + 主按钮） ---------- */
 .actionbar {
@@ -179,6 +308,7 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   border-radius: var(--card-radius);
   padding: 8px 14px;
   white-space: nowrap;
+  overflow: visible;
 }
 .scores { color: var(--muted); font-size: 12px; }
 .count { color: var(--muted); font-size: 11px; margin-left: 4px; }
@@ -266,116 +396,6 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 .upload-pop label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--muted); font-weight: 600; }
 .upload-pop input[type="file"] { font-size: 10.5px; }
 
-/* ---------- 次要信息抽屉（默认全收起，点开才占屏） ---------- */
-.drawer { border-top: 1px solid var(--line); }
-.drawer summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 5px 2px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--faint);
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.drawer summary::-webkit-details-marker { display: none; }
-.drawer summary::before { content: "▸ "; font-size: 9px; }
-.drawer[open] summary::before { content: "▾ "; }
-.drawer summary:hover { color: var(--foreground); }
-.drawer[open] summary { color: var(--foreground); }
-.drawer-body { padding: 2px 2px 8px; }
-
-.roster-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(6.2rem, 1fr));
-  gap: 4px;
-  max-height: 26vh;
-  overflow: auto;
-}
-.chip {
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 3px 7px;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.chip .pos { margin-right: 4px; color: var(--faint); font-size: 9.5px; }
-.chip.current { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
-.chip.current .pos { color: #b3b3b3; }
-.chip.out { color: var(--faint); text-decoration: line-through; border-style: dashed; }
-.chip-model-input {
-  font: inherit;
-  font-size: 10px;
-  width: 100%;
-  border: 1px solid var(--foreground);
-  border-radius: 5px;
-  padding: 2px 4px;
-}
-.roster-sub { color: var(--faint); font-weight: 600; font-size: 10.5px; margin-right: 8px; }
-.roster-actions { display: inline-flex; gap: 5px; margin-left: 10px; vertical-align: middle; }
-
-.drawer-body.cols { display: flex; gap: 10px; }
-.tree { flex: 0 0 34%; overflow: auto; max-height: 26vh; }
-.tree ul { list-style: none; margin: 0; padding: 0 4px; }
-.node-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1.5px 6px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-.node-row:hover { background: var(--hover); }
-.node-row.selected { background: var(--foreground); color: var(--background); }
-.node-dir { font-weight: 700; }
-.toggle { color: var(--faint); font-size: 9px; width: 9px; flex: none; }
-.fileview-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.file-title {
-  color: var(--muted);
-  font-size: 10.5px;
-  padding: 2px 0 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.fileview {
-  margin: 0;
-  overflow: auto;
-  max-height: 24vh;
-  font-size: 11px;
-  line-height: 1.5;
-}
-.line { display: flex; gap: 8px; white-space: pre; }
-.ln { color: var(--faint); flex: none; width: 3ch; text-align: right; }
-
-.prompt {
-  margin: 0;
-  overflow: auto;
-  max-height: 26vh;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.log { overflow: auto; max-height: 26vh; }
-.log-item { padding: 4px 8px; border-radius: 7px; }
-.log-item:hover { background: var(--hover); }
-.log-head { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
-.log-ts { color: var(--faint); font-size: 10px; flex: none; }
-.log-action { font-weight: 600; font-size: 11.5px; }
-.log-player { color: var(--muted); font-size: 10.5px; }
-.log-detail { color: var(--muted); font-size: 11px; margin-top: 2px; }
-.log-item.r-PASS .log-action { font-weight: 800; }
-.log-item.r-FAIL .log-action { background: var(--foreground); color: var(--background); padding: 0 5px; border-radius: 4px; }
-
-.empty { color: var(--faint); padding: 6px 8px; font-size: 11.5px; }
-
 /* ---------- 浮层横幅 ---------- */
 .banner {
   position: fixed;
@@ -460,5 +480,7 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 /* 窄屏兜底 */
 @media (max-width: 900px) {
   body { overflow: auto; }
+  .battle { flex-direction: column; }
+  .col-left, .col-right { flex: 1 1 auto; }
   .stage { grid-template-columns: repeat(2, 1fr); }
 }

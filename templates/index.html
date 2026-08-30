@@ -7,54 +7,95 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=13">
+<link rel="stylesheet" href="/static/style.css?v=14">
 </head>
 <body>
 
-<!-- 顶栏：赛况一行 -->
+<!-- 顶栏：赛况一行（全文信息） -->
 <header class="topbar">
   <span class="brand">BUG RELAY</span>
-  <span class="now">R<b id="st-round">–</b></span>
+  <span class="now">第 <b id="st-round">–</b> 轮</span>
   <b id="st-player" class="now-player">–</b>
   <span class="meta">
-    存 <b id="st-survivors" class="ok">–</b>
+    存 <b id="st-survivors">–</b>
     <span class="sep">·</span> 淘 <b id="st-eliminated">–</b>
-    <span class="sep">·</span> <b id="st-arena" class="bad">arena</b>
-    <span id="st-rules" class="rules-dot" title="测试规范 TESTING_GUIDELINES.md 是否已注入 arena_repo"></span>
+    <span class="sep">·</span> arena <b id="st-arena">–</b>
+    <span class="sep">·</span> 规范 <b id="st-rules">–</b>
   </span>
   <span class="spacer"></span>
-  <span id="st-last" class="last-badge">–</span>
+  <span class="meta">最近 <b id="st-last">–</b></span>
   <button id="btn-draw" class="btn">抽签</button>
   <button id="btn-restore" class="btn">还原</button>
 </header>
 
-<!-- 主舞台：四阶段大卡（视觉主角） -->
+<!-- 四阶段：紧凑横排卡片（当前黑底聚光灯） -->
 <main id="stage" class="stage">
   <article class="stage-card" id="step-1">
     <div class="stage-num">1</div>
-    <h2 class="stage-name">作答</h2>
-    <p class="stage-who">FBL 正在改码</p>
-    <p class="stage-state">等待 inbox/answer</p>
+    <div class="stage-body">
+      <h2 class="stage-name">作答</h2>
+      <p class="stage-who">等待选手</p>
+      <p class="stage-state">等待 inbox/answer</p>
+    </div>
   </article>
   <article class="stage-card" id="step-2">
     <div class="stage-num">2</div>
-    <h2 class="stage-name">判定</h2>
-    <p class="stage-who">框架跑测试</p>
-    <p class="stage-state">历史 + 隐藏全绿则过</p>
+    <div class="stage-body">
+      <h2 class="stage-name">判定</h2>
+      <p class="stage-who">框架跑测试</p>
+      <p class="stage-state">历史 + 隐藏全绿则过</p>
+    </div>
   </article>
   <article class="stage-card" id="step-3">
     <div class="stage-num">3</div>
-    <h2 class="stage-name">出题</h2>
-    <p class="stage-who">FBL 写下一棒需求</p>
-    <p class="stage-state">等待 inbox/next_prompt</p>
+    <div class="stage-body">
+      <h2 class="stage-name">出题</h2>
+      <p class="stage-who">等待选手</p>
+      <p class="stage-state">等待 inbox/next_prompt</p>
+    </div>
   </article>
   <article class="stage-card" id="step-4">
     <div class="stage-num">4</div>
-    <h2 class="stage-name">自证</h2>
-    <p class="stage-who">验题模型重实现</p>
-    <p class="stage-state">被隐藏测试考核</p>
+    <div class="stage-body">
+      <h2 class="stage-name">自证</h2>
+      <p class="stage-who">验题模型重实现</p>
+      <p class="stage-state">被隐藏测试考核</p>
+    </div>
   </article>
 </main>
+
+<!-- 战场三栏（填满余下空间） -->
+<section class="battle">
+
+  <section class="col col-left">
+    <details id="roster" class="roster">
+      <summary>选手席<span id="roster-sub" class="roster-sub"></span>
+        <span class="roster-actions">
+          <button id="btn-edit-models" class="mini">编辑模型</button>
+          <button id="btn-models-save" class="mini dark is-hidden">保存</button>
+          <button id="btn-models-cancel" class="mini is-hidden">取消</button>
+        </span>
+      </summary>
+      <div id="roster-grid" class="roster-grid"></div>
+      <div id="roster-msg" class="op-msg"></div>
+    </details>
+    <div class="col-label">arena_repo</div>
+    <div id="tree" class="tree"><div class="empty">加载中…</div></div>
+    <div id="file-title" class="file-title">点击文件查看</div>
+    <pre id="fileview" class="fileview"></pre>
+  </section>
+
+  <section class="col col-mid">
+    <div class="col-label">当前需求 next_prompt.md</div>
+    <pre id="prompt" class="prompt">等待首轮需求</pre>
+  </section>
+
+  <section class="col col-right">
+    <div class="col-label">实时日志</div>
+    <div id="log" class="log"><div class="empty">暂无日志</div></div>
+  </section>
+
+</section>
 
 <!-- 信息带：计数 + 反馈 + 主按钮 -->
 <footer class="actionbar">
@@ -82,46 +123,6 @@
   <button id="btn-judge-proposal" class="btn primary">校验出题并交棒</button>
 </footer>
 
-<!-- 次要信息抽屉：选手席 / 文件树 / 需求 / 日志（点击才占屏） -->
-<details class="drawer" id="drawer-roster">
-  <summary>选手席</summary>
-  <div class="drawer-body">
-    <span id="roster-sub" class="roster-sub"></span>
-    <div id="roster-grid" class="roster-grid"></div>
-    <div id="roster-msg" class="op-msg"></div>
-    <span class="roster-actions">
-      <button id="btn-edit-models" class="mini">编辑模型</button>
-      <button id="btn-models-save" class="mini dark is-hidden">保存</button>
-      <button id="btn-models-cancel" class="mini is-hidden">取消</button>
-    </span>
-  </div>
-</details>
-
-<details class="drawer" id="drawer-tree">
-  <summary>arena_repo 文件</summary>
-  <div class="drawer-body cols">
-    <div id="tree" class="tree"><div class="empty">加载中…</div></div>
-    <div class="fileview-wrap">
-      <div id="file-title" class="file-title">点击文件查看</div>
-      <pre id="fileview" class="fileview"></pre>
-    </div>
-  </div>
-</details>
-
-<details class="drawer" id="drawer-prompt">
-  <summary>当前需求 next_prompt.md</summary>
-  <div class="drawer-body">
-    <pre id="prompt" class="prompt">等待首轮需求</pre>
-  </div>
-</details>
-
-<details class="drawer" id="drawer-log">
-  <summary>实时日志</summary>
-  <div class="drawer-body">
-    <div id="log" class="log"><div class="empty">暂无日志</div></div>
-  </div>
-</details>
-
 <!-- 浮层横幅（不占布局空间） -->
 <div id="banner" class="banner hidden"></div>
 
@@ -144,6 +145,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=13"></script>
+<script src="/static/main.js?v=14"></script>
 </body>
 </html>
