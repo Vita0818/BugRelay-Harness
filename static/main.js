@@ -92,6 +92,9 @@ function renderState(st, inbox, currentStep) {
   const arenaEl = $("st-arena");
   arenaEl.textContent = st.arena_ready ? "就绪" : "未就绪";
   arenaEl.className = st.arena_ready ? "ok" : "bad";
+  const rulesEl = $("st-rules");
+  rulesEl.textContent = st.arena_ready ? (st.rules_injected ? "已注入" : "待注入") : "–";
+  rulesEl.className = st.rules_injected ? "ok" : "";
 
   const lastEl = $("st-last");
   lastEl.textContent = st.last_result || "–";
@@ -115,6 +118,7 @@ function renderState(st, inbox, currentStep) {
   // 按钮可用性（已导入材料 或 inbox/ 中检测到材料均可直接判定）
   $("btn-judge-answer").disabled = !(st.arena_ready && st.phase === "answering" && (st.pending_answer || inboxAnswer));
   $("btn-judge-proposal").disabled = !(st.arena_ready && st.phase === "proposing" && (st.pending_proposal || inboxProposal));
+  $("btn-inject-rules").disabled = !st.arena_ready;
   $("btn-restore").disabled = !st.arena_ready;
   $("btn-upload-answer").disabled = !st.arena_ready;
   $("btn-upload-proposal").disabled = !st.arena_ready;
@@ -582,6 +586,16 @@ async function restoreBackup() {
   fullRefresh();
 }
 
+async function injectRules() {
+  const msg = $("rules-msg");
+  const btn = $("btn-inject-rules");
+  btn.disabled = true;
+  const data = await api("/api/inject-rules", { method: "POST" });
+  btn.disabled = false;
+  setMsg(msg, data.message || data.error || "完成", data.ok ? "ok" : "err");
+  fullRefresh();
+}
+
 /* ---------------- 顺序抽签（每场开始时；随机重排接力顺序并重置比赛进度） ---------------- */
 
 async function drawLots() {
@@ -726,6 +740,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-refresh").addEventListener("click", fullRefresh);
   $("btn-restore").addEventListener("click", restoreBackup);
   $("btn-draw").addEventListener("click", drawLots);
+  $("btn-inject-rules").addEventListener("click", injectRules);
   $("btn-upload-answer").addEventListener("click", uploadAnswer);
   $("btn-judge-answer").addEventListener("click", judgeAnswer);
   $("btn-upload-proposal").addEventListener("click", uploadProposal);

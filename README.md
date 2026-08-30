@@ -163,6 +163,7 @@ python -m cli.bugrelay judge-proposal                  # 校验出题并交棒�
 python -m cli.bugrelay restore                         # 还原最近备份
 python -m cli.bugrelay set-model FBL "Claude Fable 5.5" # 模型迭代：更新选手实际模型
 python -m cli.bugrelay draw                            # 顺序抽签：随机重排接力顺序并重置进度（每场开始时）
+python -m cli.bugrelay inject-rules                    # 手动注入测试规范到 arena_repo（平时自动注入并自愈）
 python -m cli.bugrelay web                             # 启动 Web
 ```
 
@@ -184,6 +185,7 @@ python -m cli.bugrelay web                             # 启动 Web
 | POST | `/api/restore` | 还原最近备份 |
 | POST | `/api/set-model` | 批量更新选手实际模型 `{"updates": {三字码: 新模型名}}`（模型迭代；arena 未就绪也可用） |
 | POST | `/api/draw` | 顺序抽签：随机重排全部选手接力顺序并重置比赛进度（保留选手表与首轮需求） |
+| POST | `/api/inject-rules` | 手动把测试规范写入 arena_repo/TESTING_GUIDELINES.md（幂等；平时自动注入自愈） |
 
 安全约定：**前端任何接口都不返回 hidden_tests/ 内容**；测试结果只显示总结果与
 通过数/总数，测试函数名、断言内容、diff 一律不展示（pytest 原始输出只留在服务端终端供人类排障）。
@@ -225,8 +227,16 @@ harness_repo/
 ## 9. 测试规范（出题契约）
 
 出题人（选手/验题模型/首轮人类）提交的 `hidden_tests.py` 必须满足以下规范。
-**建议把本节原文直接粘进给出题选手的提示词**。违反阻断级规则的文件在导入时
-（Web 上传 / CLI load-proposal / inbox 拾取）会被静态闸门拒绝，不会浪费验题的模型调用。
+
+**规范的注入**：arena_repo 接入框架（`arena_ready` 刷新为就绪）的那一刻，本规范会自动写入
+`arena_repo/TESTING_GUIDELINES.md`——选手 Agent 打开仓库即可看到（面向选手改写的版本，
+含答题规则/出题规则/数据内联示例/交付物文件名约定）；文件被删后下次刷新自动补回
+（自愈）。需要立即重写：Web「重注入规范 / Rules」按钮、CLI `inject-rules`、
+`POST /api/inject-rules`（均幂等）。
+
+违反阻断级规则的文件在导入时（Web 上传 / CLI load-proposal / inbox 拾取）会被静态闸门
+拒绝，不会浪费验题的模型调用。**建议把本节原文（或注入的 TESTING_GUIDELINES.md）
+直接粘进给出题选手的提示词**。
 
 ### 9.1 hidden_tests.py 写法（阻断级，机器校验）
 

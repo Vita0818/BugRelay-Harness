@@ -65,11 +65,22 @@ def is_arena_ready() -> bool:
 
 
 def refresh_arena_ready() -> bool:
-    """刷新 state 中的 arena_ready 字段（供 Web 启动 / CLI 每次执行前调用）。"""
+    """刷新 state 中的 arena_ready 字段（供 Web 启动 / CLI 每次执行前调用）。
+
+    arena 就绪时顺带做**规范注入自愈**：TESTING_GUIDELINES.md 缺失或内容过时
+    就重写（core/rules.inject_rules 幂等，内容一致不写盘），并把 rules_injected
+    写入 state。这样人类把 arena_repo 接入框架的那一刻，规范就已在仓库里。
+    """
     ready = is_arena_ready()
     state = load_state()
-    if state.get("arena_ready") != ready:
+    new_rules = False
+    if ready:
+        from . import rules  # 延迟导入：rules 依赖本模块的 _safe_arena，防循环
+        rules.inject_rules()
+        new_rules = rules.rules_injected()
+    if state.get("arena_ready") != ready or state.get("rules_injected", False) != new_rules:
         state["arena_ready"] = ready
+        state["rules_injected"] = new_rules
         save_state(state)
     return ready
 

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=10">
+<link rel="stylesheet" href="/static/style.css?v=11">
 </head>
 <body>
 
@@ -32,6 +32,7 @@
   <div class="stat"><label>存活 Alive</label><b id="st-survivors">–</b></div>
   <div class="stat"><label>淘汰 Out</label><b id="st-eliminated">–</b></div>
   <div class="stat"><label>arena_repo</label><b id="st-arena">–</b></div>
+  <div class="stat"><label>规范 Rules</label><b id="st-rules" title="测试规范 TESTING_GUIDELINES.md 是否已注入 arena_repo">–</b></div>
   <div class="stat"><label>最近结果 Last</label><b id="st-last">–</b></div>
 </section>
 
@@ -148,6 +149,15 @@
     </div>
     <div id="proposal-msg" class="op-msg"></div>
   </div>
+
+  <div class="op-card" id="op-ops">
+    <span class="card-group-label">通用 / Utilities</span>
+    <p class="hint">测试规范会在 arena_repo 接入时自动写入 <code>TESTING_GUIDELINES.md</code>（选手打开仓库即可见，被删后自动补回）。需要立即重写入时点下面按钮。</p>
+    <div class="op-buttons">
+      <button id="btn-inject-rules" class="btn">重注入规范 / Rules</button>
+    </div>
+    <div id="rules-msg" class="op-msg"></div>
+  </div>
 </section>
 
 <!-- 底部测试结果：只显示总结果与计数 -->
@@ -193,6 +203,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=10"></script>
+<script src="/static/main.js?v=11"></script>
 </body>
 </html>

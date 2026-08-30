@@ -10,6 +10,7 @@
     python -m cli.bugrelay restore                     # 还原最近备份
     python -m cli.bugrelay set-model FBL "Claude 5.5"  # 更新选手实际模型（模型迭代）
     python -m cli.bugrelay draw                        # 顺序抽签（每场开始时）
+    python -m cli.bugrelay inject-rules                # 手动注入测试规范到 arena_repo
 
 说明：
 - 与 Web 共用 core/ 函数，操作结果一致；
@@ -94,6 +95,8 @@ def cmd_status(_args) -> int:
         elim = state.get("eliminated") or []
         table.add_row("淘汰", ("%d 人：%s" % (len(elim), ", ".join(elim))) if elim else "（无）")
         table.add_row("arena_ready", "就绪" if state.get("arena_ready") else "未就绪（arena_repo 不存在或不是 git 仓库）")
+        table.add_row("规范注入", ("已注入（TESTING_GUIDELINES.md 在仓库中）" if state.get("rules_injected")
+                                   else ("未注入（arena 就绪后自动补）" if state.get("arena_ready") else "未注入（arena 未就绪）")))
         table.add_row("inbox 材料", "、".join(inbox_parts) or "（空）")
         table.add_row("当前需求", str(state.get("current_prompt_file")) or "（等待首轮需求）")
         table.add_row("最近结果", str(state.get("last_result")))
@@ -112,6 +115,7 @@ def cmd_status(_args) -> int:
         elim = state.get("eliminated") or []
         print("淘汰      : %s" % (("%d 人：%s" % (len(elim), ", ".join(elim))) if elim else "（无）"))
         print("arena     : %s" % ("就绪" if state.get("arena_ready") else "未就绪"))
+        print("规范注入  : %s" % ("已注入" if state.get("rules_injected") else "未注入"))
         print("inbox     : %s" % ("、".join(inbox_parts) or "（空）"))
         print("当前需求  : %s" % (state.get("current_prompt_file") or "（等待首轮需求）"))
         print("最近结果  : %s" % state.get("last_result"))
@@ -155,6 +159,18 @@ def cmd_draw(_args) -> int:
         for i, code in enumerate(order):
             print("%2d. %s %s" % (i + 1, code, (players.get(code) or {}).get("name", "")))
     return 0
+
+
+def cmd_inject_rules(_args) -> int:
+    """手动注入测试规范到 arena_repo/TESTING_GUIDELINES.md（等同 /api/inject-rules）。
+
+    平时无需执行：CLI 每次运行前的 _bootstrap 刷新钩子已自动注入并自愈。
+    """
+    _bootstrap()
+    from core import rules
+    r = rules.inject_rules()
+    _print(r.get("message") or ("失败: %s" % r.get("error", "")) or "未知结果")
+    return 0 if r.get("ok") else 1
 
 
 def cmd_web(args) -> int:
@@ -266,6 +282,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_draw = sub.add_parser(
         "draw", help="顺序抽签：随机重排接力顺序并重置比赛进度（等同 /api/draw；每场开始时用）")
     p_draw.set_defaults(func=cmd_draw)
+
+    p_rules = sub.add_parser(
+        "inject-rules", help="手动注入测试规范到 arena_repo/TESTING_GUIDELINES.md（幂等；平时自动注入）")
+    p_rules.set_defaults(func=cmd_inject_rules)
 
     return parser
 

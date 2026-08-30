@@ -230,6 +230,26 @@ async def api_restore():
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
 
 
+@app.post("/api/inject-rules")
+async def api_inject_rules():
+    """手动把测试规范写入 arena_repo/TESTING_GUIDELINES.md（幂等）。
+
+    平时无需调用：arena 就绪时 /api/state 的刷新钩子已自动注入并自愈
+    （文件被删会在下次刷新补回）。此接口供人类立即重注入时使用。
+    """
+    try:
+        if not repo_ops.is_arena_ready():
+            return {"ok": False, "injected": False, "path": None,
+                    "message": "arena_repo 未就绪，无法注入规范"}
+        from core import rules
+        result = rules.inject_rules()  # 先注入（真实报告写入/已最新），再刷新 state
+        repo_ops.refresh_arena_ready()
+        result["ok"] = bool(result.get("ok"))
+        return result
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
+
+
 # ---------------------------------------------------------------------------
 # 运维接口（选手元数据维护；与 arena_repo 无关，arena 未就绪时同样可用）
 # ---------------------------------------------------------------------------
