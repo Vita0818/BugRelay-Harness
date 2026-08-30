@@ -98,8 +98,8 @@ uvicorn app:app --host 127.0.0.1 --port 8080
 ### 5.2 每轮循环
 
 ```
-选手改码 → 人类导入答题文件（上传/CLI load-answer）→ 点「验收答题」
-    ├─ PASS → 该选手出题 → 导入 next_prompt.md + hidden_tests.py（/api/proposal）→ 点「校验出题并交棒」
+选手改码 → 材料进入框架（上传 / CLI / inbox/ 自动拾取）→ 点「验收答题」
+    ├─ PASS → 该选手出题 → 材料进入框架 → 点「校验出题并交棒」
     │           ├─ PASS（模型自证全绿）→ 轮次 +1，交棒给下一位，回到"选手改码"
     │           └─ FAIL → 出题者淘汰，切换下一位（其已验收代码保留）
     └─ FAIL → 选手淘汰、代码回滚，切换下一位
@@ -107,14 +107,32 @@ uvicorn app:app --host 127.0.0.1 --port 8080
 
 Web 操作区对应：① 答题区（上传 `.zip`/多文件 → 「验收答题」）；② 出题区（上传需求 + 隐藏测试 → 「校验出题并交棒」）；③ 通用（刷新、「还原到最近备份」）。
 
-### 5.3 CLI（与 Web 共用 core 裁判逻辑，结果一致）
+### 5.3 材料投递目录 inbox/（免手动上传，推荐）
+
+**框架收材料本来就是文件级的**（Web 上传文件 / CLI 指路径），无需复制粘贴内容。inbox/
+更进一步：把"挑文件"也省掉——Agent 按约定文件名交付，你只按一个按钮：
+
+| 材料 | inbox/ 约定 | 触发方式 |
+| ---- | ---- | ---- |
+| 答题（业务代码改动） | `inbox/answer.zip` 或 `inbox/answer/` 目录 | 点「验收答题」（或 `judge-answer`），尚无已导入材料时自动拾取 |
+| 出题（下一棒需求 + 隐藏测试） | `inbox/next_prompt.md` + `inbox/hidden_tests.py` | 点「校验出题并交棒」（或 `judge-proposal`），同上 |
+
+- 已消费的材料自动移入 `inbox/_consumed/<时间戳>/` 留档，不会被下一轮误拾取；
+- `config.json` 的 `inbox_dir` 可指向任意目录——**可直接配成你 Agent 的产物输出目录**，
+  实现"Agent 写完 → 你点按钮"零手工；
+- 建议在给 Agent 的提示词里明确约定交付物文件名（answer/、next_prompt.md、
+  hidden_tests.py），Agent 是按提示词办事的，这一步由你控制；
+- Web 顶栏与 `bugrelay status` 会显示 inbox 中检测到的材料；页面按钮在检测到材料时自动亮起。
+- 首轮准备（prompts/ + hidden_tests/ + state）仍属人类赛前环节，不走 inbox。
+
+### 5.4 CLI（与 Web 共用 core 裁判逻辑，结果一致）
 
 ```bash
-python -m cli.bugrelay status                          # 查看轮次/存活/淘汰/arena_ready
+python -m cli.bugrelay status                          # 查看轮次/存活/淘汰/arena_ready/inbox 材料
 python -m cli.bugrelay load-answer <path>              # 导入答题文件（.zip / 目录 / 单文件）
-python -m cli.bugrelay judge-answer                    # 验收答题
+python -m cli.bugrelay judge-answer                    # 验收答题（inbox/ 有材料时自动拾取）
 python -m cli.bugrelay load-proposal <md> <py>         # 导入出题材料
-python -m cli.bugrelay judge-proposal                  # 校验出题并交棒
+python -m cli.bugrelay judge-proposal                  # 校验出题并交棒（inbox/ 有材料时自动拾取）
 python -m cli.bugrelay restore                         # 还原最近备份
 python -m cli.bugrelay web                             # 启动 Web
 ```
@@ -148,6 +166,7 @@ python -m cli.bugrelay web                             # 启动 Web
 | `verifier_model` | OpenAI 兼容 `/chat/completions`：`base_url`/`model`/`api_key`/`timeout_seconds`。**单次调用、不重试、超时直接判 FAIL** |
 | `pytest_args` | 传给 pytest 的参数（默认 `["-q"]`，框架会追加 junitxml/legacy 等解析用参数） |
 | `state_file` / `hidden_tests_dir` / `prompts_dir` / `backups_dir` | 框架自身目录布局 |
+| `inbox_dir` | 材料投递目录（默认 `inbox`，可指向 Agent 的产物输出目录，见 §5.3） |
 
 ## 8. 目录结构
 
@@ -166,6 +185,7 @@ harness_repo/
 ├── hidden_tests/         # 暂存本轮隐藏测试（评测后清理/归档进 arena tests/）
 ├── backups/              # arena_repo 备份（index.json 登记，会增长，可手动清理旧目录及登记项）
 ├── prompts/              # 每轮合法的 next_prompt.md
+├── inbox/                # 材料投递目录（Agent 交付物落点，自动拾取，见 §5.3）
 └── state/                # match.json + log.jsonl（最新在上）
 ```
 

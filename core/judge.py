@@ -36,8 +36,8 @@ from typing import Dict, List, Optional, Tuple
 
 from . import repo_ops
 from .utils import (
-    BASE_DIR, UPLOADS_DIR, arena_path, load_config, load_state, log_event,
-    now_iso, resolve_path, save_state,
+    BASE_DIR, UPLOADS_DIR, arena_path, inbox_dir_path, load_config, load_state,
+    log_event, now_iso, resolve_path, save_state,
 )
 
 # 全局裁判锁：防止 Web 双击 / CLI 并发导致两次评测同时改 arena
@@ -415,6 +415,83 @@ def import_proposal(prompt_file: str, test_file: str) -> Dict:
 
 
 # ---------------------------------------------------------------------------
+# inbox 材料投递目录：自动拾取（免手动上传/复制粘贴）
+#
+# 约定（Agent 交付物按固定文件名写入 inbox/，人类按按钮时框架自动读取）：
+#   答题材料：inbox/answer.zip（压缩包）或 inbox/answer/（目录）
+#   出题材料：inbox/next_prompt.md + inbox/hidden_tests.py
+# 已消费的材料自动移入 inbox/_consumed/<时间戳>/ 留档，避免下轮误拾取。
+# inbox_dir 可在 config.json 配置——可直接指向 Agent 的产物输出目录。
+# ---------------------------------------------------------------------------
+
+def inbox_status() -> Dict:
+    """检测 inbox/ 中是否已就位本轮材料（供 Web/CLI 提示与按钮启用）。"""
+    inbox = inbox_dir_path()
+    return {
+        "answer": (inbox / "answer.zip").is_file() or (inbox / "answer").is_dir(),
+        "proposal": (inbox / "next_prompt.md").is_file() and (inbox / "hidden_tests.py").is_file(),
+    }
+
+
+def _archive_inbox(items: List[Path]) -> None:
+    """把已消费的 inbox 材料移入 inbox/_consumed/<时间戳>/ 留档。"""
+    try:
+        dest = inbox_dir_path() / "_consumed" / time.strftime("%Y%m%d_%H%M%S")
+        dest.mkdir(parents=True, exist_ok=True)
+        for it in items:
+            if it.exists():
+                shutil.move(str(it), str(dest / it.name))
+    except Exception as e:
+        log_event("inbox", "材料归档失败: %s" % e, result="WARN")
+
+
+def pickup_answer() -> Dict:
+    """从 inbox/ 自动拾取答题材料（复制到暂存后登记 pending，原件归档）。"""
+    inbox = inbox_dir_path()
+    src: Optional[Path] = None
+    if (inbox / "answer.zip").is_file():
+        src = inbox / "answer.zip"
+    elif (inbox / "answer").is_dir():
+        src = inbox / "answer"
+    if src is None:
+        return {"ok": False, "error": "inbox/ 中未发现答题材料（约定：inbox/answer.zip 或 inbox/answer/ 目录）"}
+
+    stage = UPLOADS_DIR / ("answer_%s" % uuid.uuid4().hex[:8])
+    try:
+        if src.is_file():
+            stage.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, stage / "answer.zip")
+            target: Path = stage / "answer.zip"
+        else:
+            shutil.copytree(src, stage, dirs_exist_ok=True)
+            target = stage
+    except Exception as e:
+        shutil.rmtree(stage, ignore_errors=True)
+        return {"ok": False, "error": "复制 inbox 答题材料失败: %s" % e}
+
+    result = import_answer(str(target))
+    if result.get("ok"):
+        log_event("inbox", "已从 inbox/ 自动拾取答题材料: %s" % src.name)
+        _archive_inbox([src])
+    else:
+        shutil.rmtree(stage, ignore_errors=True)
+    return result
+
+
+def pickup_proposal() -> Dict:
+    """从 inbox/ 自动拾取出题材料（next_prompt.md + hidden_tests.py）。"""
+    inbox = inbox_dir_path()
+    pf, tf = inbox / "next_prompt.md", inbox / "hidden_tests.py"
+    if not (pf.is_file() and tf.is_file()):
+        return {"ok": False, "error": "inbox/ 中未发现完整出题材料（约定：next_prompt.md + hidden_tests.py）"}
+    result = import_proposal(str(pf), str(tf))
+    if result.get("ok"):
+        log_event("inbox", "已从 inbox/ 自动拾取出题材料（需求 + 隐藏测试）")
+        _archive_inbox([pf, tf])
+    return result
+
+
+# ---------------------------------------------------------------------------
 # 答题验收（不调用任何模型）
 # ---------------------------------------------------------------------------
 
@@ -444,7 +521,15 @@ def verify_answer() -> Dict:
             return {"ok": False, "result": None, "reason": "当前不是答题阶段（phase=%s）" % state.get("phase")}
         pending = state.get("pending_answer")
         if not pending or not Path(pending).exists():
-            return {"ok": False, "result": None, "reason": "尚未导入答题材料，请先上传（/api/answer 或 load-answer）"}
+            # inbox 自动拾取：材料已放入 inbox/ 时无需手动上传
+            picked = pickup_answer()
+            if picked.get("ok"):
+                state = load_state()
+                pending = state.get("pending_answer")
+            else:
+                return {"ok": False, "result": None,
+                        "reason": "尚未导入答题材料：请上传（/api/answer / load-answer），或把材料放入 "
+                                  "inbox/（answer.zip 或 answer/ 目录）后重试"}
 
         hidden_dir = resolve_path(cfg.get("hidden_tests_dir", "hidden_tests"))
         hidden_src = hidden_dir / "hidden_tests.py"
@@ -683,7 +768,17 @@ def verify_proposal() -> Dict:
         prompt_path = Path(pending.get("prompt", "")) if pending.get("prompt") else None
         test_path = Path(pending.get("test", "")) if pending.get("test") else None
         if not (prompt_path and test_path and prompt_path.exists() and test_path.exists()):
-            return {"ok": False, "result": None, "reason": "尚未导入出题材料，请先上传（/api/proposal 或 load-proposal）"}
+            # inbox 自动拾取：出题材料已放入 inbox/ 时无需手动上传
+            picked = pickup_proposal()
+            if picked.get("ok"):
+                state = load_state()
+                pending = state.get("pending_proposal") or {}
+                prompt_path = Path(pending.get("prompt", "")) if pending.get("prompt") else None
+                test_path = Path(pending.get("test", "")) if pending.get("test") else None
+            if not (prompt_path and test_path and prompt_path.exists() and test_path.exists()):
+                return {"ok": False, "result": None,
+                        "reason": "尚未导入出题材料：请上传（/api/proposal / load-proposal），或把 "
+                                  "next_prompt.md 与 hidden_tests.py 放入 inbox/ 后重试"}
         try:
             prompt_text = prompt_path.read_text(encoding="utf-8")
         except Exception as e:

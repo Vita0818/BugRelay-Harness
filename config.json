@@ -13,5 +13,6 @@
   "state_file": "state/match.json",
   "hidden_tests_dir": "hidden_tests",
   "prompts_dir": "prompts",
-  "backups_dir": "backups"
+  "backups_dir": "backups",
+  "inbox_dir": "inbox"
 }

@@ -13,5 +13,9 @@ __pycache__/
 backups/*
 !backups/.gitkeep
 
+# inbox 材料目录（运行时投递物与已消费留档）
+inbox/*
+!inbox/.gitkeep
+
 # 系统文件
 .DS_Store

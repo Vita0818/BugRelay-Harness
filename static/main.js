@@ -51,9 +51,11 @@ function hideBanner() {
 
 /* ---------------- 赛况渲染 ---------------- */
 
-function renderState(st) {
+function renderState(st, inbox) {
   state.arenaReady = !!st.arena_ready;
   state.phase = st.phase;
+  const inboxAnswer = inbox && inbox.answer;
+  const inboxProposal = inbox && inbox.proposal;
 
   $("st-round").textContent = st.round;
   $("st-player").textContent = st.current_player || "–";
@@ -88,9 +90,9 @@ function renderState(st) {
   renderTestRow("t-history", sum && sum.history);
   renderTestRow("t-hidden", sum && sum.hidden);
 
-  // 按钮可用性
-  $("btn-judge-answer").disabled = !(st.arena_ready && st.phase === "answering" && st.pending_answer);
-  $("btn-judge-proposal").disabled = !(st.arena_ready && st.phase === "proposing" && st.pending_proposal);
+  // 按钮可用性（已导入材料 或 inbox/ 中检测到材料均可直接判定）
+  $("btn-judge-answer").disabled = !(st.arena_ready && st.phase === "answering" && (st.pending_answer || inboxAnswer));
+  $("btn-judge-proposal").disabled = !(st.arena_ready && st.phase === "proposing" && (st.pending_proposal || inboxProposal));
   $("btn-restore").disabled = !st.arena_ready;
   $("btn-upload-answer").disabled = !st.arena_ready;
   $("btn-upload-proposal").disabled = !st.arena_ready;
@@ -99,9 +101,13 @@ function renderState(st) {
   state.pendingProposal = st.pending_proposal || null;
   if (st.pending_answer) {
     setMsg($("answer-msg"), "已导入待验收材料，可点击「验收答题」", "ok");
+  } else if (inboxAnswer && st.phase === "answering" && st.arena_ready) {
+    setMsg($("answer-msg"), "检测到 inbox/ 中有答题材料（answer.zip / answer/），点击「验收答题」将自动导入并评测", "ok");
   }
   if (st.pending_proposal) {
     setMsg($("proposal-msg"), "已导入待校验出题材料，可点击「校验出题并交棒」", "ok");
+  } else if (inboxProposal && st.phase === "proposing" && st.arena_ready) {
+    setMsg($("proposal-msg"), "检测到 inbox/ 中有出题材料（next_prompt.md + hidden_tests.py），点击「校验出题并交棒」将自动导入并验题", "ok");
   }
 }
 
@@ -273,7 +279,7 @@ async function loadLog() {
 async function refreshAll() {
   const data = await api("/api/state");
   if (data.ok) {
-    renderState(data.state || {});
+    renderState(data.state || {}, data.inbox || {});
   }
   loadLog();
 }

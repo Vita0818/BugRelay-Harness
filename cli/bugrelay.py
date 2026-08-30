@@ -56,6 +56,12 @@ def _bootstrap() -> None:
 def cmd_status(_args) -> int:
     _bootstrap()
     state = load_state()
+    ib = judge.inbox_status()
+    inbox_parts = []
+    if ib.get("answer"):
+        inbox_parts.append("答题材料")
+    if ib.get("proposal"):
+        inbox_parts.append("出题材料")
     if _CONSOLE is not None:
         table = Table(title="Bug Relay 赛况", show_header=True, header_style="bold")
         table.add_column("项目", style="cyan")
@@ -67,6 +73,7 @@ def cmd_status(_args) -> int:
         table.add_row("存活", ", ".join(state.get("survivors", [])) or "（无）")
         table.add_row("淘汰", ", ".join(state.get("eliminated", [])) or "（无）")
         table.add_row("arena_ready", "就绪" if state.get("arena_ready") else "未就绪（arena_repo 不存在或不是 git 仓库）")
+        table.add_row("inbox 材料", "、".join(inbox_parts) or "（空）")
         table.add_row("当前需求", str(state.get("current_prompt_file")) or "（等待首轮需求）")
         table.add_row("最近结果", str(state.get("last_result")))
         scores = state.get("scores") or {}
@@ -81,6 +88,7 @@ def cmd_status(_args) -> int:
         print("存活      : %s" % ", ".join(state.get("survivors", [])))
         print("淘汰      : %s" % (", ".join(state.get("eliminated", [])) or "（无）"))
         print("arena     : %s" % ("就绪" if state.get("arena_ready") else "未就绪"))
+        print("inbox     : %s" % ("、".join(inbox_parts) or "（空）"))
         print("当前需求  : %s" % (state.get("current_prompt_file") or "（等待首轮需求）"))
         print("最近结果  : %s" % state.get("last_result"))
         print("说明      : %s" % (state.get("last_action_msg") or ""))
@@ -173,7 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_load.add_argument("path", help="选手返回的 .zip / 目录 / 单个业务文件")
     p_load.set_defaults(func=cmd_load_answer)
 
-    p_judge = sub.add_parser("judge-answer", help="验收答题（等同 /api/judge-answer）")
+    p_judge = sub.add_parser("judge-answer", help="验收答题（等同 /api/judge-answer；inbox/ 有材料时自动拾取）")
     p_judge.set_defaults(func=cmd_judge_answer)
 
     p_prop = sub.add_parser("load-proposal", help="导入出题材料（等同 /api/proposal）")
@@ -181,7 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_prop.add_argument("test_file", help="hidden_tests.py")
     p_prop.set_defaults(func=cmd_load_proposal)
 
-    p_jprop = sub.add_parser("judge-proposal", help="校验出题并交棒（等同 /api/judge-proposal）")
+    p_jprop = sub.add_parser("judge-proposal", help="校验出题并交棒（等同 /api/judge-proposal；inbox/ 有材料时自动拾取）")
     p_jprop.set_defaults(func=cmd_judge_proposal)
 
     p_restore = sub.add_parser("restore", help="还原 arena_repo 到最近备份（等同 /api/restore）")

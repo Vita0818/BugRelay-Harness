@@ -62,12 +62,12 @@ async def index() -> HTMLResponse:
 
 @app.get("/api/state")
 async def api_state():
-    """当前赛况（轮次/选手/存活/淘汰/arena_ready/最近结果等）。"""
+    """当前赛况（轮次/选手/存活/淘汰/arena_ready/最近结果等）+ inbox 材料就位情况。"""
     try:
         ensure_dirs()
         repo_ops.refresh_arena_ready()
         state = load_state()
-        return {"ok": True, "state": state}
+        return {"ok": True, "state": state, "inbox": judge.inbox_status()}
     except Exception as e:  # 任何异常都不让前端拿到 500 崩溃
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
 

@@ -55,7 +55,7 @@
 <section class="ops">
   <div class="op-card" id="op-answer">
     <h3>① 答题区 · 当前选手提交业务代码改动</h3>
-    <p class="hint">支持上传 .zip（建议为 business_dir 结构，或带 src/ 前缀）或多个业务文件/文件夹。内容只会应用到 arena_repo 的 <code>src/</code>，严禁包含 <code>tests/</code> 改动（自动拦截并判 FAIL）。</p>
+    <p class="hint">支持上传 .zip（建议为 business_dir 结构，或带 src/ 前缀）或多个业务文件/文件夹。内容只会应用到 arena_repo 的 <code>src/</code>，严禁包含 <code>tests/</code> 改动（自动拦截并判 FAIL）。<br>也可免上传：让 Agent 把交付物按约定写入 <code>inbox/</code>（<code>answer.zip</code> 或 <code>answer/</code> 目录），直接点「验收答题」自动导入。</p>
     <input type="file" id="answer-files" multiple
            accept=".zip,.py,.txt,.json,.toml,.yaml,.yml,.cfg,.ini,.md,.sh,.js,.html,.css">
     <div class="op-buttons">
@@ -67,6 +67,7 @@
 
   <div class="op-card" id="op-proposal">
     <h3>② 出题区 · 答题通过后提交下一棒需求 + 隐藏测试</h3>
+    <p class="hint">也可免上传：让 Agent 把 <code>next_prompt.md</code> 与 <code>hidden_tests.py</code> 写入 <code>inbox/</code>，直接点「校验出题并交棒」自动导入。</p>
     <div class="form-row">
       <label>需求文档 next_prompt.md</label>
       <input type="file" id="proposal-prompt" accept=".md,.txt">

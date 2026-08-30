@@ -37,6 +37,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "hidden_tests_dir": "hidden_tests",
     "prompts_dir": "prompts",
     "backups_dir": "backups",
+    "inbox_dir": "inbox",
 }
 
 # 运行时目录/文件都挂在 BASE_DIR 下，运行时按需创建（tmp/ 不预建）
@@ -116,6 +117,12 @@ def arena_path(cfg: Optional[Dict[str, Any]] = None) -> Path:
 def state_file_path(cfg: Optional[Dict[str, Any]] = None) -> Path:
     cfg = cfg or load_config()
     return resolve_path(cfg.get("state_file", "state/match.json"))
+
+
+def inbox_dir_path(cfg: Optional[Dict[str, Any]] = None) -> Path:
+    """材料投递目录 inbox/（Agent 交付物落点，人类按按钮时框架自动拾取）。"""
+    cfg = cfg or load_config()
+    return resolve_path(cfg.get("inbox_dir", "inbox"))
 
 
 def load_state() -> Dict[str, Any]:
@@ -224,7 +231,7 @@ def read_log(limit: int = 100) -> List[Dict[str, Any]]:
 def ensure_dirs() -> None:
     """确保框架自身的目录与占位文件存在（不创建 arena_repo，不创建业务目录）。"""
     cfg = load_config()
-    for key in ("hidden_tests_dir", "prompts_dir", "backups_dir"):
+    for key in ("hidden_tests_dir", "prompts_dir", "backups_dir", "inbox_dir"):
         d = resolve_path(cfg.get(key, key))
         d.mkdir(parents=True, exist_ok=True)
         keep = d / ".gitkeep"
