@@ -454,15 +454,15 @@ async function saveModelEdits() {
 /* ---------------- 四步流程条 ---------------- */
 
 function renderStepper(st, currentStep) {
-  // 当前所在步骤（等待材料的位置）：answering->1 作答，proposing->2 出题
-  const waiting = currentStep || (st.phase === "proposing" ? 2 : 1);
+  // 当前所在步骤（等待材料的位置）：answering->① 作答，proposing->③ 出题
+  const waiting = currentStep || (st.phase === "proposing" ? 3 : 1);
   const cur = st.current_player || "";
   const players = st.players || {};
-  // 2×2 四格：① 作答 ② 出题（选手创作一对）→ ③ 判定 ④ 自证（框架校验）
+  // 时间顺序：① 作答 ② 判定 ③ 出题 ④ 自证（2×2 布局：上排选手①③，下排框架②④）
   const whoTexts = [
     cur ? cur + " 正在改码" : "等待选手",
-    cur ? cur + " 写下一棒需求" : "等待选手",
     "框架跑测试",
+    cur ? cur + " 写下一棒需求" : "等待选手",
     "验题模型重实现",
   ];
   for (let n = 1; n <= 4; n++) {
@@ -572,7 +572,7 @@ async function uploadAnswer() {
 async function judgeAnswer() {
   const msg = $("answer-msg");
   setMsg(msg, state.mock ? "MOCK 判定中…" : "评测中…（应用文件 → 运行 pytest，可能需要一些时间）");
-  state.runningStep = 3;  // ③ 判定运行中
+  state.runningStep = 2;  // ② 判定运行中
   renderStepper(state, 3);
   $("btn-judge-answer").disabled = true;
   const data = await api("/api/judge-answer", { method: "POST" });
@@ -617,7 +617,7 @@ async function uploadProposal() {
 async function judgeProposal() {
   const msg = $("proposal-msg");
   setMsg(msg, state.mock ? "MOCK 验题中…" : "验题中…（复制 arena → 调用验题模型 → 运行 pytest，可能耗时较长）");
-  state.runningStep = 4;  // ④ 自证运行中
+  state.runningStep = 4;  // ④ 自证运行中（编号即时间顺序）
   renderStepper(state, 4);
   $("btn-judge-proposal").disabled = true;
   const data = await api("/api/judge-proposal", { method: "POST" });

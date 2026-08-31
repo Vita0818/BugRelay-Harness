@@ -109,20 +109,8 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   background: var(--background);
   transition: background 0.18s, border-color 0.18s;
 }
-.tnode-num {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: 2px solid var(--line);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 27px;
-  font-weight: 800;
-  color: var(--faint);
-}
 .tnode-name {
-  margin: 16px 0 6px;
+  margin: 0 0 8px;
   font-size: 34px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -152,14 +140,12 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 
 /* 当前节点：黑底聚光灯 */
 .tnode.active { background: var(--foreground); border-color: var(--foreground); }
-.tnode.active .tnode-num { border-color: rgba(255, 255, 255, 0.4); color: var(--background); }
 .tnode.active .tnode-name { color: var(--background); }
 .tnode.active .tnode-who { color: #e5e5e5; }
 .tnode.active .tnode-state { color: #a3a3a3; border-top-color: rgba(255, 255, 255, 0.22); }
 
 /* 已完成节点：实心描边 + 勾 */
 .tnode.done { border-color: var(--foreground); }
-.tnode.done .tnode-num { border-color: var(--foreground); color: var(--foreground); }
 .tnode.done .tnode-name { color: var(--foreground); }
 .tnode.done .tnode-who { color: var(--foreground); }
 .tnode.done::after {
@@ -173,7 +159,6 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 
 /* 评测运行中：黑底呼吸 */
 .tnode.ongoing { background: var(--foreground); border-color: var(--foreground); animation: node-breathe 1.1s ease-in-out infinite; }
-.tnode.ongoing .tnode-num { border-color: rgba(255, 255, 255, 0.4); color: var(--background); }
 .tnode.ongoing .tnode-name { color: var(--background); }
 .tnode.ongoing .tnode-who { color: #e5e5e5; }
 .tnode.ongoing .tnode-state { color: #a3a3a3; border-top-color: rgba(255, 255, 255, 0.22); }

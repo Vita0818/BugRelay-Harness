@@ -67,15 +67,15 @@ async def index() -> HTMLResponse:
 async def api_state():
     """当前赛况（轮次/选手/存活/淘汰/arena_ready/最近结果等）+ inbox 材料就位情况。
 
-    step 为派生字段（2×2 四格：① 作答 ② 出题 / ③ 判定 ④ 自证）：
-    phase=answering -> step 1（等待作答材料）；phase=proposing -> step 2（等待出题材料）。
-    步骤 3/4 是按钮触发的瞬时评测动作，由前端在请求进行中本地高亮。
+    step 为派生字段（时间顺序：① 作答 ② 判定 ③ 出题 ④ 自证）：
+    phase=answering -> step 1（等待作答材料）；phase=proposing -> step 3（等待出题材料）。
+    步骤 2/4 是按钮触发的瞬时评测动作，由前端在请求进行中本地高亮。
     """
     try:
         ensure_dirs()
         repo_ops.refresh_arena_ready()
         state = load_state()
-        step = 2 if state.get("phase") == "proposing" else 1
+        step = 3 if state.get("phase") == "proposing" else 1
         return {"ok": True, "state": state, "inbox": judge.inbox_status(), "step": step,
                 "mock": judge.is_mock_enabled()}
     except Exception as e:  # 任何异常都不让前端拿到 500 崩溃

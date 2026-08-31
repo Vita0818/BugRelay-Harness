@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=18">
+<link rel="stylesheet" href="/static/style.css?v=20">
 </head>
 <body>
 
@@ -31,31 +31,28 @@
 </header>
 
 <!-- 主画面：2×2 四格阶段
-     上排 = 选手创作一对：① 作答 + ② 出题；下排 = 框架校验：③ 判定 → ④ 自证。
-     ③ 考的是 ①（答题验收），④ 考的是 ②（出题自证）。 -->
+     编号 = 时间顺序：① 作答 → ② 判定 → ③ 出题 → ④ 自证。
+     布局分组：上排选手创作一对（①+③），下排框架校验（②+④）；
+     左列答题链路 ①→②，右列出题链路 ③→④。 -->
 <main class="arena">
   <div class="track">
     <div class="tnode" id="step-1">
-      <div class="tnode-num">1</div>
-      <div class="tnode-name">作答</div>
+      <div class="tnode-name">① 作答</div>
       <div class="tnode-who">等待选手</div>
       <div class="tnode-state">等待交付</div>
     </div>
-    <div class="tnode" id="step-2">
-      <div class="tnode-num">2</div>
-      <div class="tnode-name">出题</div>
+    <div class="tnode" id="step-3">
+      <div class="tnode-name">③ 出题</div>
       <div class="tnode-who">等待选手</div>
       <div class="tnode-state">给下一棒需求</div>
     </div>
-    <div class="tnode" id="step-3">
-      <div class="tnode-num">3</div>
-      <div class="tnode-name">判定</div>
+    <div class="tnode" id="step-2">
+      <div class="tnode-name">② 判定</div>
       <div class="tnode-who">框架跑测试</div>
       <div class="tnode-state">历史 + 隐藏</div>
     </div>
     <div class="tnode" id="step-4">
-      <div class="tnode-num">4</div>
-      <div class="tnode-name">自证</div>
+      <div class="tnode-name">④ 自证</div>
       <div class="tnode-who">验题模型重实现</div>
       <div class="tnode-state">被隐藏测试考核</div>
     </div>
@@ -168,6 +165,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=19"></script>
+<script src="/static/main.js?v=20"></script>
 </body>
 </html>
