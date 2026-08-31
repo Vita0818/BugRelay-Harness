@@ -64,18 +64,21 @@ function showVerdict(word, detail, sub) {
   const v = $("verdict");
   $("verdict-label").textContent = state.mock ? "MOCK 演练 VERDICT" : "判定 VERDICT";
   $("verdict-word").textContent = word || "–";
-  $("verdict-word").className = "verdict-word " + (word === "PASS" ? "pass" : "fail");
+  // 全屏色块：整屏 PASS 绿 / FAIL 红，白字
+  v.classList.remove("hidden", "pass", "fail");
+  v.classList.add(word === "PASS" ? "pass" : "fail");
   $("verdict-detail").textContent = detail || "";
   $("verdict-sub").textContent = sub || "";
-  v.classList.remove("hidden");
   if (verdictTimer) {
     clearTimeout(verdictTimer);
   }
-  verdictTimer = setTimeout(hideVerdict, 2200); // 全屏定格约 2 秒
+  verdictTimer = setTimeout(hideVerdict, 3000); // 全屏定格约 3 秒
 }
 
 function hideVerdict() {
-  $("verdict").classList.add("hidden");
+  const v = $("verdict");
+  v.classList.add("hidden");
+  v.classList.remove("pass", "fail");
 }
 
 /* ---------------- 赛况渲染 ---------------- */
@@ -460,7 +463,7 @@ async function saveModelEdits() {
 /* ---------------- 四步流程条 ---------------- */
 
 function renderStepper(st, currentStep) {
-  // 时间顺序：① 作答 ② 判定 ③ 出题 ④ 自证（2×2 布局：上排选手①③，下排框架②④）
+  // 横向 1×4：时间顺序 ① 作答 ② 判定 ③ 出题 ④ 自证，从左到右接力
   // 串行铁律：同一时刻最多一格黑。
   // - 空闲时：waiting 格 active（等待材料）
   // - 评测运行中：仅 runningStep 格 ongoing（呼吸黑），之前的格 done，之后的格保持中性
