@@ -117,27 +117,9 @@ async def api_log(limit: int = Query(100, ge=1, le=500)):
 
 @app.get("/api/prompt")
 async def api_prompt():
-    """当前需求 next_prompt.md 内容（只读，完整展示）。
-
-    MOCK 演练模式下 current_prompt_file 为 "mock://round_N" 标记，
-    返回占位文本（演练不产生真实需求文件）。
-    """
+    """当前需求 next_prompt.md 内容（只读，完整展示）。"""
     try:
-        from core.utils import load_config
-        cfg = load_config()
-        state = load_state()
-        name = state.get("current_prompt_file")
-        if not name:
-            return {"ok": True, "name": None, "content": None, "message": "等待首轮需求"}
-        if isinstance(name, str) and name.startswith(judge.MOCK_PROMPT_PREFIX):
-            return {"ok": True, "name": name,
-                    "content": "（MOCK 演练）这是演练占位需求——真实模式下，此处显示当前选手"
-                               "要实现的 next_prompt.md 全文。",
-                    "message": ""}
-        p = resolve_path(cfg.get("prompts_dir", "prompts")) / name
-        if not p.exists():
-            return {"ok": True, "name": name, "content": None, "message": "需求文件缺失: %s" % name}
-        return {"ok": True, "name": name, "content": p.read_text(encoding="utf-8"), "message": ""}
+        return judge.read_current_prompt()
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
 

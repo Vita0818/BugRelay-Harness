@@ -7,27 +7,29 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=23">
+<link rel="stylesheet" href="/static/style.css?v=24">
 </head>
 <body>
 
-<!-- 顶栏：赛况横幅（录屏主信息） -->
+<!-- 顶栏：赛况横幅（录屏主信息）；当前选手独占一行 -->
 <header class="topbar">
-  <span class="brand">BUG RELAY</span>
-  <span id="mock-badge" class="mock-badge is-hidden">MOCK 演练</span>
-  <span class="hero-round">第 <b id="st-round">–</b> 轮</span>
+  <div class="topbar-row1">
+    <span class="brand">BUG RELAY</span>
+    <span id="mock-badge" class="mock-badge is-hidden">MOCK 演练</span>
+    <span class="hero-round">第 <b id="st-round">–</b> 轮</span>
+    <span class="meta">
+      存 <b id="st-survivors">–</b>
+      <span class="sep">·</span> 淘 <b id="st-eliminated">–</b>
+      <span class="sep">·</span> <b id="st-arena">–</b>
+      <span class="sep">·</span> 最近 <b id="st-last">–</b>
+    </span>
+    <span class="spacer"></span>
+    <button id="btn-mock" class="btn ghost">MOCK 关</button>
+    <button id="btn-draw" class="btn">抽签</button>
+    <button id="btn-restore" class="btn">还原</button>
+    <button id="btn-debug" class="btn ghost">调试</button>
+  </div>
   <b id="st-player" class="hero-player">–</b>
-  <span class="meta">
-    存 <b id="st-survivors">–</b>
-    <span class="sep">·</span> 淘 <b id="st-eliminated">–</b>
-    <span class="sep">·</span> <b id="st-arena">–</b>
-    <span class="sep">·</span> 最近 <b id="st-last">–</b>
-  </span>
-  <span class="spacer"></span>
-  <button id="btn-mock" class="btn ghost">MOCK 关</button>
-  <button id="btn-draw" class="btn">抽签</button>
-  <button id="btn-restore" class="btn">还原</button>
-  <button id="btn-debug" class="btn ghost">调试</button>
 </header>
 
 <!-- 主画面：横向 1×4 四格阶段带
@@ -35,27 +37,32 @@
 <main class="arena">
   <div class="track">
     <div class="tnode" id="step-1">
-      <div class="tnode-name">① 作答</div>
+      <div class="tnode-name">1 作答</div>
       <div class="tnode-who">等待选手</div>
       <div class="tnode-state">等待交付</div>
     </div>
     <div class="tnode" id="step-2">
-      <div class="tnode-name">② 判定</div>
+      <div class="tnode-name">2 判定</div>
       <div class="tnode-who">框架跑测试</div>
       <div class="tnode-state">历史 + 隐藏</div>
     </div>
     <div class="tnode" id="step-3">
-      <div class="tnode-name">③ 出题</div>
+      <div class="tnode-name">3 出题</div>
       <div class="tnode-who">等待选手</div>
       <div class="tnode-state">给下一棒需求</div>
     </div>
     <div class="tnode" id="step-4">
-      <div class="tnode-name">④ 自证</div>
+      <div class="tnode-name">4 自证</div>
       <div class="tnode-who">验题模型重实现</div>
       <div class="tnode-state">被隐藏测试考核</div>
     </div>
   </div>
-  <div class="prompt-symbol" id="prompt-symbol">○ 等待首轮需求</div>
+  <div class="prompt-strip">
+    <span class="prompt-strip-label">当前提示词</span>
+    <b id="prompt-strip-name" class="prompt-strip-name">等待首轮需求</b>
+    <span id="prompt-strip-body" class="prompt-strip-body"></span>
+    <button id="btn-copy-prompt-main" class="mini">复制提示词</button>
+  </div>
 </main>
 
 <!-- 底栏：判定结果（常驻）+ 主操作 -->
@@ -76,7 +83,7 @@
     <span id="action-msgs">
       <span id="answer-msg" class="op-msg"></span><span id="proposal-msg" class="op-msg"></span><span id="rules-msg" class="op-msg"></span>
     </span>
-    <button id="btn-advance" class="btn primary big">推进</button>
+    <button id="btn-advance" class="btn primary big">NEXT</button>
   </div>
 </footer>
 
@@ -168,6 +175,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=23"></script>
+<script src="/static/main.js?v=24"></script>
 </body>
 </html>

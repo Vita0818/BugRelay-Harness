@@ -165,6 +165,21 @@ def cmd_draw(_args) -> int:
     return 0
 
 
+def cmd_prompt(_args) -> int:
+    """打印当前需求全文：这就是要喂给选手 Agent 的提示词。"""
+    _bootstrap()
+    r = judge.read_current_prompt()
+    if not r.get("ok"):
+        _print("读取失败: %s" % r.get("error", ""))
+        return 1
+    if not r.get("content"):
+        _print(r.get("message") or "（无需求）")
+        return 0
+    _print("# 当前需求（%s）——复制以下内容喂给选手 Agent" % r.get("name"))
+    _print(r["content"])
+    return 0
+
+
 def cmd_set_first_prompt(args) -> int:
     """导入首轮需求（等同 /api/first-prompt）：人类主办方给第一位选手的提示词。"""
     _bootstrap()
@@ -283,6 +298,10 @@ def build_parser() -> argparse.ArgumentParser:
         "set-first-prompt", help="导入首轮需求（等同 /api/first-prompt；只在开局无需求时允许）")
     p_first.add_argument("prompt_file", help="首轮需求 .md/.txt")
     p_first.set_defaults(func=cmd_set_first_prompt)
+
+    p_prompt = sub.add_parser(
+        "prompt", help="打印当前需求全文（复制粘贴给选手 Agent 的提示词）")
+    p_prompt.set_defaults(func=cmd_prompt)
 
     p_jprop = sub.add_parser("judge-proposal", help="校验出题并交棒（等同 /api/judge-proposal；inbox/ 有材料时自动拾取）")
     p_jprop.set_defaults(func=cmd_judge_proposal)

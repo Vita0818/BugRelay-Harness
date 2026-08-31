@@ -489,6 +489,28 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
             "test_count": test_count}
 
 
+def read_current_prompt() -> Dict:
+    """读取当前需求（next_prompt.md）全文，供 Web/CLI 展示与复制。
+
+    返回 {ok, name, content, message}。MOCK 演练模式下 current_prompt_file
+    为 "mock://round_N" 标记，返回占位文本（演练不产生真实需求文件）。
+    """
+    cfg = load_config()
+    state = load_state()
+    name = state.get("current_prompt_file")
+    if not name:
+        return {"ok": True, "name": None, "content": None, "message": "等待首轮需求"}
+    if isinstance(name, str) and name.startswith(MOCK_PROMPT_PREFIX):
+        return {"ok": True, "name": name,
+                "content": "（MOCK 演练）这是演练占位需求——真实模式下，此处显示当前选手"
+                           "要实现的 next_prompt.md 全文。",
+                "message": ""}
+    p = resolve_path(cfg.get("prompts_dir", "prompts")) / name
+    if not p.exists():
+        return {"ok": True, "name": name, "content": None, "message": "需求文件缺失: %s" % name}
+    return {"ok": True, "name": name, "content": p.read_text(encoding="utf-8"), "message": ""}
+
+
 def set_initial_prompt(prompt_file: str) -> Dict:
     """设置首轮需求（第一位选手作答的提示词，由人类主办方提供，一次性）。
 
@@ -692,6 +714,7 @@ def _mock_counts(result: str) -> Dict:
 
 def _mock_verify_answer() -> Dict:
     """MOCK 演练版答题验收：随机判定，状态推进与真实流程一致。"""
+    time.sleep(1.0)  # 模拟真实评测的运行延迟（约 1 秒），让录屏有"在跑"的观感
     with VERIFY_LOCK:
         state = load_state()
         if state.get("status") == "finished":
@@ -732,6 +755,7 @@ def _mock_verify_answer() -> Dict:
 
 def _mock_verify_proposal() -> Dict:
     """MOCK 演练版出题验题：随机判定，状态推进与真实流程一致（不调模型）。"""
+    time.sleep(1.0)  # 模拟真实验题的运行延迟（约 1 秒），让录屏有"在跑"的观感
     with VERIFY_LOCK:
         state = load_state()
         if state.get("status") == "finished":

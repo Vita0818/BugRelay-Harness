@@ -145,16 +145,6 @@ function renderState(st, inbox, currentStep, mockOn) {
     hideBanner();
   }
 
-  // 象征性需求提示：只示意"需求已给出"，不展示全文（全文在调试抽屉里）
-  const ps = $("prompt-symbol");
-  if (st.current_prompt_file) {
-    ps.textContent = "需求已给出 next_prompt.md";
-    ps.className = "prompt-symbol given";
-  } else {
-    ps.textContent = "等待首轮需求";
-    ps.className = "prompt-symbol";
-  }
-
   // 判定结果面板（常驻）：总判定 + 历史/隐藏两行计数 + 一句结果说明
   const sum = st.last_test_summary;
   const overall = $("t-overall");
@@ -172,17 +162,16 @@ function renderState(st, inbox, currentStep, mockOn) {
   rmsg.className = "result-msg" +
     (st.last_result === "PASS" ? " ok" : (st.last_result === "FAIL" ? " err" : ""));
 
-  // 主按钮「推进」：按阶段自动决定动作（answering→验收答题，proposing→校验出题并交棒）
+  // 主按钮「NEXT」：按阶段自动决定动作（answering→验收答题，proposing→校验出题并交棒）
   const finished = st.status === "finished";
   const advBtn = $("btn-advance");
+  advBtn.textContent = "NEXT";
   if (st.phase === "proposing") {
-    advBtn.textContent = "④ 自证 · 校验出题并交棒";
     advBtn.disabled = !(
       (state.mock && !finished) ||
       (st.arena_ready && (st.pending_proposal || inboxProposal))
     );
   } else {
-    advBtn.textContent = "② 判定 · 验收答题";
     advBtn.disabled = !(
       (state.mock && st.phase === "answering" && !finished) ||
       (st.arena_ready && st.phase === "answering" && (st.pending_answer || inboxAnswer))
@@ -506,9 +495,20 @@ async function loadPrompt() {
   }
   if (data.content == null) {
     box.textContent = data.message || "等待首轮需求";
-    return;
+  } else {
+    box.textContent = data.content;
   }
-  box.textContent = data.content;
+  // 主画面提示词条：文件名 + 首行摘要（全文在调试抽屉，复制用全文）
+  const nameEl = $("prompt-strip-name");
+  const bodyEl = $("prompt-strip-body");
+  if (data.content) {
+    nameEl.textContent = data.name || "next_prompt.md";
+    const first = (data.content.split("\n").find((l) => l.trim()) || "").trim();
+    bodyEl.textContent = first.length > 60 ? first.slice(0, 60) + "…" : first;
+  } else {
+    nameEl.textContent = "等待首轮需求";
+    bodyEl.textContent = data.message || "";
+  }
 }
 
 async function loadLog() {
@@ -662,8 +662,8 @@ async function advanceFlow() {
 
 /* ---------------- 提示词：复制给选手 Agent / 首轮需求导入 ---------------- */
 
-async function copyPrompt() {
-  const btn = $("btn-copy-prompt");
+async function copyPrompt(btn) {
+  btn = btn || $("btn-copy-prompt");
   const box = $("prompt");
   const text = box.textContent || "";
   if (!text || text === "等待首轮需求" || text.indexOf("读取失败") === 0 ||
@@ -889,7 +889,8 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-upload-answer").addEventListener("click", uploadAnswer);
   $("btn-advance").addEventListener("click", advanceFlow);
   $("btn-upload-proposal").addEventListener("click", uploadProposal);
-  $("btn-copy-prompt").addEventListener("click", copyPrompt);
+  $("btn-copy-prompt").addEventListener("click", () => copyPrompt($("btn-copy-prompt")));
+  $("btn-copy-prompt-main").addEventListener("click", () => copyPrompt($("btn-copy-prompt-main")));
   $("btn-upload-first-prompt").addEventListener("click", uploadFirstPrompt);
   $("btn-edit-models").addEventListener("click", enterModelEdit);
   $("btn-models-save").addEventListener("click", saveModelEdits);
