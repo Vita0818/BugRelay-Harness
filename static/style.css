@@ -53,7 +53,7 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   white-space: nowrap;
   overflow: hidden;
 }
-.brand { font-weight: 800; letter-spacing: 0.12em; font-size: 16px; color: var(--foreground); }
+.brand { font-weight: 800; letter-spacing: 0.12em; font-size: 24px; color: var(--foreground); }
 
 /* MOCK 演练徽章：虚线边框提示"这是模拟"，开启时黑底反白 */
 .mock-badge {

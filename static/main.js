@@ -454,16 +454,15 @@ async function saveModelEdits() {
 /* ---------------- 四步流程条 ---------------- */
 
 function renderStepper(st, currentStep) {
-  // 当前所在步骤（等待材料的位置）：answering->1，proposing->3
-  const waiting = currentStep || (st.phase === "proposing" ? 3 : 1);
+  // 当前所在步骤（等待材料的位置）：answering->1 作答，proposing->2 出题
+  const waiting = currentStep || (st.phase === "proposing" ? 2 : 1);
   const cur = st.current_player || "";
   const players = st.players || {};
-  const curName = (players[cur] || {}).name || cur;
-  // 接力赛道节点：每站的「谁在做」文案
+  // 2×2 四格：① 作答 ② 出题（选手创作一对）→ ③ 判定 ④ 自证（框架校验）
   const whoTexts = [
     cur ? cur + " 正在改码" : "等待选手",
-    "框架跑测试",
     cur ? cur + " 写下一棒需求" : "等待选手",
+    "框架跑测试",
     "验题模型重实现",
   ];
   for (let n = 1; n <= 4; n++) {
@@ -572,14 +571,8 @@ async function uploadAnswer() {
 
 async function judgeAnswer() {
   const msg = $("answer-msg");
-  const ask = state.mock
-    ? "确认验收（MOCK 演练）？判定结果将随机模拟，不运行 pytest、不读写 arena_repo。"
-    : "确认验收当前选手的答题？将应用已上传的业务文件并运行历史+隐藏测试。";
-  if (!confirm(ask)) {
-    return;
-  }
   setMsg(msg, state.mock ? "MOCK 判定中…" : "评测中…（应用文件 → 运行 pytest，可能需要一些时间）");
-  state.runningStep = 2;  // 判定运行中
+  state.runningStep = 3;  // ③ 判定运行中
   renderStepper(state, 3);
   $("btn-judge-answer").disabled = true;
   const data = await api("/api/judge-answer", { method: "POST" });
@@ -623,14 +616,8 @@ async function uploadProposal() {
 
 async function judgeProposal() {
   const msg = $("proposal-msg");
-  const ask = state.mock
-    ? "确认校验出题（MOCK 演练）？判定结果将随机模拟，不调用验题模型、不读写 arena_repo。"
-    : "确认校验出题并交棒？将调用验题模型自证（单次调用，不重试），全绿才交棒。";
-  if (!confirm(ask)) {
-    return;
-  }
   setMsg(msg, state.mock ? "MOCK 验题中…" : "验题中…（复制 arena → 调用验题模型 → 运行 pytest，可能耗时较长）");
-  state.runningStep = 4;  // 自证运行中
+  state.runningStep = 4;  // ④ 自证运行中
   renderStepper(state, 4);
   $("btn-judge-proposal").disabled = true;
   const data = await api("/api/judge-proposal", { method: "POST" });
@@ -652,9 +639,6 @@ async function judgeProposal() {
 }
 
 async function restoreBackup() {
-  if (!confirm("确认把 arena_repo 还原到最近一次备份？当前未备份的改动将丢失。")) {
-    return;
-  }
   const data = await api("/api/restore", { method: "POST" });
   if (data.ok) {
     showBanner(data.message || "已还原", "info");
@@ -678,16 +662,6 @@ async function injectRules() {
 /* ---------------- 顺序抽签（每场开始时；随机重排接力顺序并重置比赛进度） ---------------- */
 
 async function drawLots() {
-  const st = state.lastState || {};
-  const started = (st.round || 1) > 1 ||
-                  (st.eliminated && st.eliminated.length) ||
-                  Object.values(st.scores || {}).some((v) => v > 0);
-  const msg = started
-    ? "比赛已在进行中。抽签将重置全部进度（轮次/积分/淘汰），并重新随机排列接力顺序。继续？"
-    : "确认抽签？将为全部选手随机抽出接力顺序，从 1 号位开始接力，循环到最后一位再回到 1 号。";
-  if (!confirm(msg)) {
-    return;
-  }
   const btn = $("btn-draw");
   btn.disabled = true;
   const data = await api("/api/draw", { method: "POST" });
@@ -804,12 +778,6 @@ function runDrawAnimation(order, players) {
 
 async function toggleMock() {
   const on = !state.mock;
-  const ask = on
-    ? "开启 MOCK 演练模式？\n\n之后「验收答题 / 校验出题」的判定结果将随机模拟：\n不运行 pytest、不调用验题模型、不读写 arena_repo、不需要材料。\n用于上真实流程前预演整场操作。"
-    : "关闭 MOCK 演练模式，回到真实评测？\n（此后判定将真实运行 pytest / 调用验题模型）";
-  if (!confirm(ask)) {
-    return;
-  }
   const btn = $("btn-mock");
   btn.disabled = true;
   const data = await api("/api/mock", {

@@ -31,8 +31,8 @@
 </header>
 
 <!-- 主画面：2×2 四格阶段
-     上排 = 选手创作（作答 + 出题，一对）；下排 = 框架校验（判定 + 自证）。
-     左列是答题链路（1→2），右列是出题链路（3→4）。 -->
+     上排 = 选手创作一对：① 作答 + ② 出题；下排 = 框架校验：③ 判定 → ④ 自证。
+     ③ 考的是 ①（答题验收），④ 考的是 ②（出题自证）。 -->
 <main class="arena">
   <div class="track">
     <div class="tnode" id="step-1">
@@ -41,14 +41,14 @@
       <div class="tnode-who">等待选手</div>
       <div class="tnode-state">等待交付</div>
     </div>
-    <div class="tnode" id="step-3">
-      <div class="tnode-num">3</div>
+    <div class="tnode" id="step-2">
+      <div class="tnode-num">2</div>
       <div class="tnode-name">出题</div>
       <div class="tnode-who">等待选手</div>
       <div class="tnode-state">给下一棒需求</div>
     </div>
-    <div class="tnode" id="step-2">
-      <div class="tnode-num">2</div>
+    <div class="tnode" id="step-3">
+      <div class="tnode-num">3</div>
       <div class="tnode-name">判定</div>
       <div class="tnode-who">框架跑测试</div>
       <div class="tnode-state">历史 + 隐藏</div>
@@ -168,6 +168,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=18"></script>
+<script src="/static/main.js?v=19"></script>
 </body>
 </html>

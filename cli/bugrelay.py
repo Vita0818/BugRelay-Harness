@@ -57,8 +57,8 @@ def _bootstrap() -> None:
 # ---------------------------------------------------------------------------
 
 def _step_label(state) -> str:
-    """四步流程（作答→判定→出题→自证）中当前所在步骤（等待材料的环节）。"""
-    return "3/4 出题（等待需求+隐藏测试）" if state.get("phase") == "proposing" else "1/4 作答（等待业务代码改动）"
+    """2×2 四格（① 作答 ② 出题 / ③ 判定 ④ 自证）中当前所在步骤（等待材料的环节）。"""
+    return "2/4 出题（等待需求+隐藏测试）" if state.get("phase") == "proposing" else "1/4 作答（等待业务代码改动）"
 
 
 def _player_label(state, code) -> str:
