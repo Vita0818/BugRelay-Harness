@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20">
+<link rel="stylesheet" href="/static/style.css?v=22">
 </head>
 <body>
 
@@ -78,8 +78,7 @@
     <span id="action-msgs">
       <span id="answer-msg" class="op-msg"></span><span id="proposal-msg" class="op-msg"></span><span id="rules-msg" class="op-msg"></span>
     </span>
-    <button id="btn-judge-answer" class="btn primary big">验收答题</button>
-    <button id="btn-judge-proposal" class="btn primary big">校验出题并交棒</button>
+    <button id="btn-advance" class="btn primary big">推进</button>
   </div>
 </footer>
 
@@ -119,7 +118,13 @@
     </details>
 
     <details class="dblock">
-      <summary>当前需求 next_prompt.md</summary>
+      <summary>当前需求 next_prompt.md<span class="roster-actions">
+          <button id="btn-copy-prompt" class="mini">复制提示词</button>
+        </span></summary>
+      <div class="prompt-actions">
+        <label>首轮需求（开局一次性，之后每轮由选手出题产生）<input type="file" id="first-prompt-file" accept=".md,.txt"></label>
+        <button id="btn-upload-first-prompt" class="mini">上传首轮需求</button>
+      </div>
       <pre id="prompt" class="prompt">等待首轮需求</pre>
     </details>
 
@@ -165,6 +170,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=21"></script>
+<script src="/static/main.js?v=22"></script>
 </body>
 </html>

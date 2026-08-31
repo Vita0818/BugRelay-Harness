@@ -5,7 +5,8 @@
  * - 渲染 arena_repo 文件树（GET /api/tree，后端已过滤 hidden_tests/），
  *   点击文件查看内容（GET /api/file，前端渲染行号）；
  * - 展示当前需求（GET /api/prompt）与底部两行测试计数（只显示总结果与计数）；
- * - 人类点击按钮触发操作：上传答题/出题材料、验收、校验、还原。
+ * - 人类点击单个「推进」按钮触发评测：框架按阶段自动决定验收答题或校验出题；
+ * - 调试抽屉：复制当前提示词（喂给选手 Agent）、上传首轮需求、上传材料。
  *
  * 安全约定：后端不会返回 hidden_tests/ 内容与测试细节，前端也不展示。
  */
@@ -168,17 +169,22 @@ function renderState(st, inbox, currentStep, mockOn) {
   rmsg.className = "result-msg" +
     (st.last_result === "PASS" ? " ok" : (st.last_result === "FAIL" ? " err" : ""));
 
-  // 按钮可用性（已导入材料 或 inbox/ 中检测到材料均可直接判定）
-  // MOCK 演练模式：无需材料、无需 arena，按钮随阶段直接可用
+  // 主按钮「推进」：按阶段自动决定动作（answering→验收答题，proposing→校验出题并交棒）
   const finished = st.status === "finished";
-  $("btn-judge-answer").disabled = !(
-    (state.mock && st.phase === "answering" && !finished) ||
-    (st.arena_ready && st.phase === "answering" && (st.pending_answer || inboxAnswer))
-  );
-  $("btn-judge-proposal").disabled = !(
-    (state.mock && st.phase === "proposing" && !finished) ||
-    (st.arena_ready && st.phase === "proposing" && (st.pending_proposal || inboxProposal))
-  );
+  const advBtn = $("btn-advance");
+  if (st.phase === "proposing") {
+    advBtn.textContent = "④ 自证 · 校验出题并交棒";
+    advBtn.disabled = !(
+      (state.mock && !finished) ||
+      (st.arena_ready && (st.pending_proposal || inboxProposal))
+    );
+  } else {
+    advBtn.textContent = "② 判定 · 验收答题";
+    advBtn.disabled = !(
+      (state.mock && st.phase === "answering" && !finished) ||
+      (st.arena_ready && st.phase === "answering" && (st.pending_answer || inboxAnswer))
+    );
+  }
   $("btn-inject-rules").disabled = !st.arena_ready;
   $("btn-restore").disabled = !st.arena_ready;
   $("btn-upload-answer").disabled = !st.arena_ready;
@@ -577,7 +583,7 @@ async function judgeAnswer() {
   setMsg(msg, state.mock ? "MOCK 判定中…" : "评测中…（应用文件 → 运行 pytest，可能需要一些时间）");
   state.runningStep = 2;  // ② 判定运行中
   renderStepper(state, 3);
-  $("btn-judge-answer").disabled = true;
+  $("btn-advance").disabled = true;
   const data = await api("/api/judge-answer", { method: "POST" });
   state.runningStep = null;
   if (data.ok) {
@@ -622,7 +628,7 @@ async function judgeProposal() {
   setMsg(msg, state.mock ? "MOCK 验题中…" : "验题中…（复制 arena → 调用验题模型 → 运行 pytest，可能耗时较长）");
   state.runningStep = 4;  // ④ 自证运行中（编号即时间顺序）
   renderStepper(state, 4);
-  $("btn-judge-proposal").disabled = true;
+  $("btn-advance").disabled = true;
   const data = await api("/api/judge-proposal", { method: "POST" });
   state.runningStep = null;
   if (data.ok) {
@@ -637,6 +643,65 @@ async function judgeProposal() {
     setMsg(msg, data.message || data.result, data.result === "PASS" ? "ok" : "err");
   } else {
     setMsg(msg, "未执行: " + (data.error || data.reason || "未知错误"), "err");
+  }
+  fullRefresh();
+}
+
+/* ---------------- 单按钮推进：按阶段自动决定动作 ---------------- */
+
+async function advanceFlow() {
+  if (state.phase === "proposing") {
+    await judgeProposal();
+  } else {
+    await judgeAnswer();
+  }
+}
+
+/* ---------------- 提示词：复制给选手 Agent / 首轮需求导入 ---------------- */
+
+async function copyPrompt() {
+  const btn = $("btn-copy-prompt");
+  const box = $("prompt");
+  const text = box.textContent || "";
+  if (!text || text === "等待首轮需求" || text.indexOf("读取失败") === 0 ||
+      text.indexOf("（MOCK 演练）") === 0) {
+    btn.textContent = "暂无需求";
+    setTimeout(() => { btn.textContent = "复制提示词"; }, 1600);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = "已复制";
+  } catch (e) {
+    // 剪贴板 API 不可用（如非安全上下文）时退回选中文本
+    const range = document.createRange();
+    range.selectNodeContents(box);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    btn.textContent = "已选中，请 Ctrl+C";
+  }
+  setTimeout(() => { btn.textContent = "复制提示词"; }, 1600);
+  loadPrompt(); // 顺带刷新
+}
+
+async function uploadFirstPrompt() {
+  const f = $("first-prompt-file").files[0];
+  const msg = $("rules-msg");
+  if (!f) {
+    setMsg(msg, "请先选择首轮需求文件（.md/.txt）", "err");
+    return;
+  }
+  const fd = new FormData();
+  fd.append("prompt", f, f.name);
+  const btn = $("btn-upload-first-prompt");
+  btn.disabled = true;
+  const data = await api("/api/first-prompt", { method: "POST", body: fd });
+  btn.disabled = false;
+  if (data.ok) {
+    setMsg(msg, data.message || "首轮需求已导入", "ok");
+  } else {
+    setMsg(msg, data.error || "导入失败", "err");
   }
   fullRefresh();
 }
@@ -819,9 +884,10 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-draw").addEventListener("click", drawLots);
   $("btn-inject-rules").addEventListener("click", injectRules);
   $("btn-upload-answer").addEventListener("click", uploadAnswer);
-  $("btn-judge-answer").addEventListener("click", judgeAnswer);
+  $("btn-advance").addEventListener("click", advanceFlow);
   $("btn-upload-proposal").addEventListener("click", uploadProposal);
-  $("btn-judge-proposal").addEventListener("click", judgeProposal);
+  $("btn-copy-prompt").addEventListener("click", copyPrompt);
+  $("btn-upload-first-prompt").addEventListener("click", uploadFirstPrompt);
   $("btn-edit-models").addEventListener("click", enterModelEdit);
   $("btn-models-save").addEventListener("click", saveModelEdits);
   $("btn-models-cancel").addEventListener("click", exitModelEdit);

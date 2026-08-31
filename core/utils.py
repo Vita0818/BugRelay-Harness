@@ -243,6 +243,10 @@ def draw_order() -> Dict[str, Any]:
     state["pending_proposal"] = None
     state["last_result"] = None
     state["last_test_summary"] = None
+    # MOCK 演练标记的需求不是真实文件：重置时清掉，避免关 MOCK 后一直显示占位文本
+    cur_prompt = state.get("current_prompt_file")
+    if isinstance(cur_prompt, str) and cur_prompt.startswith("mock://"):
+        state["current_prompt_file"] = None
     state["last_action_msg"] = "已抽签，%s 为 1 号位，接力由此开始" % order[0]
     save_state(state)
     log_event("draw", "顺序抽签（重置为新比赛）：" + " → ".join(

@@ -489,6 +489,42 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
             "test_count": test_count}
 
 
+def set_initial_prompt(prompt_file: str) -> Dict:
+    """设置首轮需求（第一位选手作答的提示词，由人类主办方提供，一次性）。
+
+    仅在 current_prompt_file 为空（或为 MOCK 演练标记）时允许设置；
+    复制到 prompts/round_1_initial.md 并指向它。后续每轮需求由选手出题自动产生。
+    """
+    pf = Path(prompt_file)
+    if not pf.exists():
+        return {"ok": False, "error": "需求文档不存在"}
+    try:
+        text = pf.read_text(encoding="utf-8")
+    except Exception as e:
+        return {"ok": False, "error": "需求文档读取失败: %s" % e}
+    if not text.strip():
+        return {"ok": False, "error": "需求文档为空"}
+
+    state = load_state()
+    cur = state.get("current_prompt_file")
+    if cur and not str(cur).startswith(MOCK_PROMPT_PREFIX):
+        return {"ok": False, "error": "当前已有需求（%s）。首轮需求只在比赛开局、"
+                                      "尚无任何需求时设置；之后每轮需求由选手出题产生" % cur}
+
+    cfg = load_config()
+    prompts_dir = resolve_path(cfg.get("prompts_dir", "prompts"))
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    name = "round_1_initial.md"
+    (prompts_dir / name).write_text(text, encoding="utf-8")
+
+    state["current_prompt_file"] = name
+    _set_msg(state, "首轮需求已导入，请交给第一位选手作答")
+    save_state(state)
+    log_event("set-first-prompt", "导入首轮需求（%s）" % name,
+              player=state.get("current_player"), round_=state.get("round"))
+    return {"ok": True, "name": name, "message": "首轮需求已导入，请交给第一位选手作答"}
+
+
 def import_proposal(prompt_file: str, test_file: str) -> Dict:
     """导入出题材料（等同 POST /api/proposal）：next_prompt.md + hidden_tests.py。
 

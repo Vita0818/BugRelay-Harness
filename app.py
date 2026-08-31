@@ -201,6 +201,20 @@ async def api_judge_answer():
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
 
 
+@app.post("/api/first-prompt")
+async def api_first_prompt(prompt: UploadFile = File(..., description="首轮需求 .md/.txt")):
+    """导入首轮需求（人类主办方给第一位选手的提示词，仅在开局无需求时允许）。"""
+    try:
+        ensure_dirs()
+        staging = UPLOADS_DIR / ("first_prompt_%s" % uuid.uuid4().hex[:8])
+        staging.mkdir(parents=True, exist_ok=True)
+        p_path = staging / "round_1_initial.md"
+        p_path.write_bytes(await prompt.read())
+        return judge.set_initial_prompt(str(p_path))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
+
+
 @app.post("/api/proposal")
 async def api_proposal(
     prompt: UploadFile = File(..., description="next_prompt.md（.md/.txt）"),

@@ -6,6 +6,7 @@
     python -m cli.bugrelay load-answer <path>           # 导入答题文件（zip/目录/单文件）
     python -m cli.bugrelay judge-answer                 # 验收答题
     python -m cli.bugrelay load-proposal <md> <py>      # 导入出题材料
+    python -m cli.bugrelay set-first-prompt <md>        # 导入首轮需求（开局一次性）
     python -m cli.bugrelay judge-proposal              # 校验出题并交棒
     python -m cli.bugrelay restore                     # 还原最近备份
     python -m cli.bugrelay set-model FBL "Claude 5.5"  # 更新选手实际模型（模型迭代）
@@ -164,6 +165,14 @@ def cmd_draw(_args) -> int:
     return 0
 
 
+def cmd_set_first_prompt(args) -> int:
+    """导入首轮需求（等同 /api/first-prompt）：人类主办方给第一位选手的提示词。"""
+    _bootstrap()
+    r = judge.set_initial_prompt(args.prompt_file)
+    _print(r.get("message") or ("失败: %s" % r.get("error", "")) or "未知结果")
+    return 0 if r.get("ok") else 1
+
+
 def cmd_inject_rules(_args) -> int:
     """手动注入测试规范到 arena_repo/TESTING_GUIDELINES.md（等同 /api/inject-rules）。
 
@@ -269,6 +278,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_prop.add_argument("prompt_file", help="next_prompt.md（.md/.txt）")
     p_prop.add_argument("test_file", help="hidden_tests.py")
     p_prop.set_defaults(func=cmd_load_proposal)
+
+    p_first = sub.add_parser(
+        "set-first-prompt", help="导入首轮需求（等同 /api/first-prompt；只在开局无需求时允许）")
+    p_first.add_argument("prompt_file", help="首轮需求 .md/.txt")
+    p_first.set_defaults(func=cmd_set_first_prompt)
 
     p_jprop = sub.add_parser("judge-proposal", help="校验出题并交棒（等同 /api/judge-proposal；inbox/ 有材料时自动拾取）")
     p_jprop.set_defaults(func=cmd_judge_proposal)
