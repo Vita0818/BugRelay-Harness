@@ -52,6 +52,17 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   overflow: hidden;
 }
 .brand { font-weight: 800; letter-spacing: 0.12em; font-size: 14px; color: var(--foreground); }
+
+/* MOCK 演练徽章：虚线边框提示"这是模拟"，开启时黑底反白 */
+.mock-badge {
+  border: 1px dashed var(--foreground);
+  border-radius: 6px;
+  padding: 2px 9px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.mock-badge.is-hidden { display: none; }
 .hero-round { color: var(--muted); font-size: 13px; }
 .hero-round b { font-size: 17px; }
 .hero-player {
@@ -464,6 +475,7 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 }
 .banner.info { border-color: var(--foreground); }
 .banner.error, .banner.warn { background: var(--foreground); color: var(--background); }
+.banner.mock { border-style: dashed; font-weight: 700; }
 
 /* ---------- 抽签动画模态 ---------- */
 .draw-modal {

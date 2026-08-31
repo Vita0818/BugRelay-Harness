@@ -7,13 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=16">
+<link rel="stylesheet" href="/static/style.css?v=17">
 </head>
 <body>
 
 <!-- 顶栏：赛况横幅（录屏主信息） -->
 <header class="topbar">
   <span class="brand">BUG RELAY</span>
+  <span id="mock-badge" class="mock-badge is-hidden">MOCK 演练</span>
   <span class="hero-round">第 <b id="st-round">–</b> 轮</span>
   <b id="st-player" class="hero-player">–</b>
   <span class="meta">
@@ -23,6 +24,7 @@
     <span class="sep">·</span> 最近 <b id="st-last">–</b>
   </span>
   <span class="spacer"></span>
+  <button id="btn-mock" class="btn ghost">MOCK 关</button>
   <button id="btn-draw" class="btn">抽签</button>
   <button id="btn-restore" class="btn">还原</button>
   <button id="btn-debug" class="btn ghost">调试</button>
@@ -159,6 +161,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=16"></script>
+<script src="/static/main.js?v=17"></script>
 </body>
 </html>

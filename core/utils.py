@@ -94,6 +94,29 @@ def load_config() -> Dict[str, Any]:
     return cfg
 
 
+def set_config_flag(key: str, value: Any) -> None:
+    """把某个顶层配置项原子写回 config.json（MOCK 开关等运行时可切配置用）。
+
+    保留其余键原样；文件不存在或损坏时以默认配置打底重建。
+    """
+    with _LOCK:
+        cfg_path = BASE_DIR / "config.json"
+        data: Dict[str, Any] = {}
+        try:
+            if cfg_path.exists():
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+        except Exception:
+            data = dict(DEFAULT_CONFIG)
+        data[key] = value
+        tmp = cfg_path.with_suffix(".json.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, cfg_path)
+
+
 def resolve_path(rel: str | Path) -> Path:
     """把相对路径解析为基于 BASE_DIR 的绝对路径（绝对路径原样返回）。"""
     p = Path(rel)

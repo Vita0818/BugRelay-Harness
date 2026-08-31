@@ -9,11 +9,14 @@
     "api_key": "ollama",
     "timeout_seconds": 600
   },
-  "pytest_args": ["-q"],
+  "pytest_args": [
+    "-q"
+  ],
   "proposal_test_count": 3,
   "state_file": "state/match.json",
   "hidden_tests_dir": "hidden_tests",
   "prompts_dir": "prompts",
   "backups_dir": "backups",
-  "inbox_dir": "inbox"
+  "inbox_dir": "inbox",
+  "mock": false
 }

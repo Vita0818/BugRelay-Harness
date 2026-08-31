@@ -24,8 +24,8 @@ from fastapi.staticfiles import StaticFiles
 
 from core import judge, repo_ops
 from core.utils import (
-    BASE_DIR, UPLOADS_DIR, draw_order, ensure_dirs, load_state, log_event, read_log,
-    resolve_path, set_player_models,
+    BASE_DIR, UPLOADS_DIR, draw_order, ensure_dirs, load_config, load_state,
+    log_event, read_log, resolve_path, set_config_flag, set_player_models,
 )
 
 
@@ -76,7 +76,8 @@ async def api_state():
         repo_ops.refresh_arena_ready()
         state = load_state()
         step = 3 if state.get("phase") == "proposing" else 1
-        return {"ok": True, "state": state, "inbox": judge.inbox_status(), "step": step}
+        return {"ok": True, "state": state, "inbox": judge.inbox_status(), "step": step,
+                "mock": judge.is_mock_enabled()}
     except Exception as e:  # 任何异常都不让前端拿到 500 崩溃
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
 
@@ -116,7 +117,11 @@ async def api_log(limit: int = Query(100, ge=1, le=500)):
 
 @app.get("/api/prompt")
 async def api_prompt():
-    """当前需求 next_prompt.md 内容（只读，完整展示）。"""
+    """当前需求 next_prompt.md 内容（只读，完整展示）。
+
+    MOCK 演练模式下 current_prompt_file 为 "mock://round_N" 标记，
+    返回占位文本（演练不产生真实需求文件）。
+    """
     try:
         from core.utils import load_config
         cfg = load_config()
@@ -124,6 +129,11 @@ async def api_prompt():
         name = state.get("current_prompt_file")
         if not name:
             return {"ok": True, "name": None, "content": None, "message": "等待首轮需求"}
+        if isinstance(name, str) and name.startswith(judge.MOCK_PROMPT_PREFIX):
+            return {"ok": True, "name": name,
+                    "content": "（MOCK 演练）这是演练占位需求——真实模式下，此处显示当前选手"
+                               "要实现的 next_prompt.md 全文。",
+                    "message": ""}
         p = resolve_path(cfg.get("prompts_dir", "prompts")) / name
         if not p.exists():
             return {"ok": True, "name": name, "content": None, "message": "需求文件缺失: %s" % name}
@@ -286,5 +296,27 @@ async def api_draw():
                 "message": state.get("last_action_msg")}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=200)
+
+
+@app.post("/api/mock")
+async def api_mock(payload: dict):
+    """开关 MOCK 演练模式（写回 config.json，Web / CLI 同时生效）。
+
+    开启后：验收答题 / 校验出题的判定结果改为随机模拟，状态推进与真实
+    流程一致，但不跑 pytest、不调验题模型、不读写 arena_repo、不需要材料。
+    用于人类上真实流程前预演整场操作。请求体：{"enabled": true/false}。
+    """
+    try:
+        enabled = (payload or {}).get("enabled")
+        if not isinstance(enabled, bool):
+            return {"ok": False, "error": "请求体需为 {\"enabled\": true/false}"}
+        set_config_flag("mock", enabled)
+        log_event("mock", "MOCK 演练模式已%s（%s）" % (
+            "开启" if enabled else "关闭",
+            "随机模拟判定：不跑 pytest、不调验题模型、不碰 arena_repo" if enabled
+            else "恢复真实评测"))
+        return {"ok": True, "mock": enabled}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=200)

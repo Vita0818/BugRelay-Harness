@@ -23,6 +23,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -317,8 +318,11 @@ def restore_arena() -> Dict:
       避免误删人类手放、尚未 commit 的初始历史测试）；
     - 两者都不可用：返回失败（不抛异常）。
     """
-    arena = arena_path()
     cfg = load_config()
+    if cfg.get("mock"):
+        return {"ok": True, "mock": True,
+                "message": "MOCK 演练模式：未读写 arena_repo，无需还原"}
+    arena = arena_path()
     if not arena.exists():
         return {"ok": False, "error": "arena_repo 不存在，无法还原"}
     if not repo_ops.is_arena_ready():
@@ -606,6 +610,137 @@ def pickup_proposal() -> Dict:
 
 
 # ---------------------------------------------------------------------------
+# MOCK 演练模式（config.json "mock": true，可经 /api/mock 或 Web 按钮切换）
+#
+# 用途：人类上真实流程前先走一遍完整操作。每次判定随机出 PASS/FAIL，
+# 状态推进（phase/round/淘汰/积分/日志）与真实流程完全一致，但：
+# - 不运行 pytest；不调用验题模型；不读写 arena_repo；不需要任何材料。
+# 日志与返回值均带 MOCK 标记，避免与真实结果混淆。
+# ---------------------------------------------------------------------------
+
+# 随机通过率（演练节奏：略偏 PASS，让流程往前走，FAIL 也会自然出现）
+MOCK_ANSWER_PASS_RATE = 0.65
+MOCK_PROPOSAL_PASS_RATE = 0.65
+
+# mock 需求标记：current_prompt_file 用此前缀时 /api/prompt 返回占位文本
+MOCK_PROMPT_PREFIX = "mock://"
+
+
+def is_mock_enabled(cfg: Optional[Dict] = None) -> bool:
+    cfg = cfg or load_config()
+    return bool(cfg.get("mock"))
+
+
+def _mock_counts(result: str) -> Dict:
+    """生成一套演练用的两行测试计数（仅计数，不含任何测试内容）。
+
+    PASS -> 全绿；FAIL -> 历史保持全绿、隐藏测试挂掉一部分（典型失败形态）。
+    """
+    cfg = load_config()
+    try:
+        hidden_total = int(cfg.get("proposal_test_count", 3))
+    except (TypeError, ValueError):
+        hidden_total = 3
+    hist_total = random.randint(5, 40)
+    if result == "PASS":
+        hp, dp = hist_total, hidden_total
+    else:
+        hp = hist_total
+        dp = random.randint(0, max(0, hidden_total - 1))
+    return {
+        "history": {"passed": hp, "total": hist_total, "ok": hp >= hist_total},
+        "hidden": {"passed": dp, "total": hidden_total, "ok": dp >= hidden_total},
+        "overall": result,
+    }
+
+
+def _mock_verify_answer() -> Dict:
+    """MOCK 演练版答题验收：随机判定，状态推进与真实流程一致。"""
+    with VERIFY_LOCK:
+        state = load_state()
+        if state.get("status") == "finished":
+            return {"ok": False, "result": None, "reason": "比赛已结束"}
+        if state.get("phase") != "answering":
+            return {"ok": False, "result": None,
+                    "reason": "当前不是答题阶段（phase=%s）" % state.get("phase")}
+        player = state.get("current_player")
+        rnd = state.get("round", 1)
+        result = "PASS" if random.random() < MOCK_ANSWER_PASS_RATE else "FAIL"
+        counts = _mock_counts(result)
+
+        state2 = load_state()
+        state2["last_result"] = result
+        state2["last_test_summary"] = counts
+        state2["pending_answer"] = None
+        if result == "PASS":
+            state2["phase"] = "proposing"  # 轮次不变，等待该选手出题
+            state2["scores"] = dict(state2.get("scores", {}))
+            state2["scores"][player] = state2["scores"].get(player, 0) + 1
+            _set_msg(state2, "[MOCK] 选手 %s 答题 PASS，请提交出题材料" % player)
+            message = "[MOCK] 选手 %s 答题通过，请继续出题" % player
+        else:
+            _advance(state2, eliminate_current=True)
+            state2["phase"] = "answering"
+            _set_msg(state2, "[MOCK] 选手 %s 答题 FAIL，已淘汰并切换" % player)
+            message = "[MOCK] 选手 %s 答题失败，已切换到 %s" % (player, state2.get("current_player"))
+        save_state(state2)
+        log_event("judge-answer",
+                  "MOCK 演练：选手 %s 答题 %s（随机模拟，未运行 pytest、未读写 arena_repo）" % (player, result),
+                  result=result, player=player, round_=rnd)
+        return {"ok": True, "result": result, "player": player, "round": rnd,
+                "mock": True, "eliminated": result == "FAIL",
+                "history": counts["history"], "hidden": counts["hidden"],
+                "next_player": state2.get("current_player"),
+                "message": message}
+
+
+def _mock_verify_proposal() -> Dict:
+    """MOCK 演练版出题验题：随机判定，状态推进与真实流程一致（不调模型）。"""
+    with VERIFY_LOCK:
+        state = load_state()
+        if state.get("status") == "finished":
+            return {"ok": False, "result": None, "reason": "比赛已结束"}
+        if state.get("phase") != "proposing":
+            return {"ok": False, "result": None,
+                    "reason": "当前选手尚未通过答题验收（phase=%s）" % state.get("phase")}
+        player = state.get("current_player")
+        rnd = state.get("round", 1)
+        result = "PASS" if random.random() < MOCK_PROPOSAL_PASS_RATE else "FAIL"
+        counts = _mock_counts(result)
+
+        state2 = load_state()
+        state2["last_result"] = result
+        state2["last_test_summary"] = counts
+        state2["pending_proposal"] = None
+        if result == "PASS":
+            new_round = rnd + 1
+            state2["current_prompt_file"] = "%sround_%d" % (MOCK_PROMPT_PREFIX, new_round)
+            state2["round"] = new_round
+            _advance(state2, eliminate_current=False)  # 交棒：出题者保留，切换下一位
+            state2["phase"] = "answering"
+            state2["scores"] = dict(state2.get("scores", {}))
+            state2["scores"][player] = state2["scores"].get(player, 0) + 1
+            _set_msg(state2, "[MOCK] 选手 %s 出题合法，已交棒（第 %d 轮）" % (player, new_round))
+            message = "[MOCK] 出题合法，已交棒：第 %d 轮，当前选手 %s" % (
+                new_round, state2.get("current_player"))
+        else:
+            _advance(state2, eliminate_current=True)
+            state2["phase"] = "answering"
+            _set_msg(state2, "[MOCK] 选手 %s 出题 FAIL，已淘汰并切换" % player)
+            message = "[MOCK] 选手 %s 出题失败，已切换到 %s" % (player, state2.get("current_player"))
+        save_state(state2)
+        log_event("judge-proposal",
+                  "MOCK 演练：选手 %s 出题 %s（随机模拟，未调用验题模型、未读写 arena_repo）" % (player, result),
+                  result=result, player=player, round_=rnd)
+        return {"ok": True, "result": result, "player": player, "round": rnd,
+                "mock": True, "eliminated": result == "FAIL",
+                "new_round": state2.get("round"),
+                "history": counts["history"], "hidden": counts["hidden"],
+                "next_player": state2.get("current_player"),
+                "message": message}
+
+
+# ---------------------------------------------------------------------------
 # 答题验收（不调用任何模型）
 # ---------------------------------------------------------------------------
 
@@ -616,8 +751,13 @@ def verify_answer() -> Dict:
     tests 状态快照(后) 对比（篡改即 FAIL 并回滚）-> 把本轮隐藏测试拷入 tests/ ->
     跑 pytest（历史+隐藏）-> 全绿则隐藏测试转正+再备份+phase=proposing；
     否则回滚+淘汰+切换下一位。全程不调用验题模型。
+
+    MOCK 演练模式（config.json "mock": true）时走 _mock_verify_answer：
+    随机判定、状态推进一致，但不跑 pytest、不碰 arena_repo、不需要材料。
     """
     cfg = load_config()
+    if cfg.get("mock"):
+        return _mock_verify_answer()
     with VERIFY_LOCK:
         state = load_state()
         player = state.get("current_player")
@@ -860,8 +1000,13 @@ def verify_proposal() -> Dict:
     hidden_tests.py -> 临时目录跑 pytest（历史+隐藏）-> 全绿：保存 prompt 到
     prompts/、新 hidden 落 hidden_tests/、round+1、交棒；否则：回滚（恢复最近
     备份，即出题者答题通过后的状态，其代码依规则保留）、出题者淘汰、切换下一位。
+
+    MOCK 演练模式（config.json "mock": true）时走 _mock_verify_proposal：
+    随机判定、状态推进一致，但不调模型、不跑 pytest、不碰 arena_repo。
     """
     cfg = load_config()
+    if cfg.get("mock"):
+        return _mock_verify_proposal()
     with VERIFY_LOCK:
         state = load_state()
         player = state.get("current_player")

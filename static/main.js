@@ -17,6 +17,7 @@ const $ = (id) => document.getElementById(id);
 const state = {
   arenaReady: false,
   phase: null,
+  mock: false,          // MOCK 演练模式：判定随机模拟（后端 /api/mock 控制）
   selectedFile: null,
   pendingAnswer: null,
   pendingProposal: null,
@@ -60,6 +61,7 @@ let verdictTimer = null;
 
 function showVerdict(word, detail, sub) {
   const v = $("verdict");
+  $("verdict-label").textContent = state.mock ? "MOCK 演练 VERDICT" : "判定 VERDICT";
   $("verdict-word").textContent = word || "–";
   $("verdict-word").className = "verdict-word " + (word === "PASS" ? "pass" : "fail");
   $("verdict-detail").textContent = detail || "";
@@ -77,12 +79,20 @@ function hideVerdict() {
 
 /* ---------------- 赛况渲染 ---------------- */
 
-function renderState(st, inbox, currentStep) {
+function renderState(st, inbox, currentStep, mockOn) {
   state.arenaReady = !!st.arena_ready;
   state.phase = st.phase;
+  state.mock = !!mockOn;
   state.lastState = st;
   const inboxAnswer = inbox && inbox.answer;
   const inboxProposal = inbox && inbox.proposal;
+
+  // MOCK 徽章与开关按钮
+  $("mock-badge").classList.toggle("is-hidden", !state.mock);
+  const mockBtn = $("btn-mock");
+  mockBtn.textContent = state.mock ? "MOCK 开" : "MOCK 关";
+  mockBtn.classList.toggle("primary", state.mock);
+  mockBtn.classList.toggle("ghost", !state.mock);
 
   $("st-round").textContent = st.round;
   // 当前选手：三字码 + 总称（悬停显示实际模型）
@@ -121,7 +131,9 @@ function renderState(st, inbox, currentStep) {
   if (st.status === "finished") {
     showBanner("比赛已结束：无存活选手可继续接力。", "warn");
   } else if (Date.now() < (state.bannerHoldUntil || 0)) {
-    // 抽签/还原等临时结果横幅保持 15 秒（32 位顺序需要阅读时间），优先于 arena 未就绪提示
+    // 抽签/还原等临时结果横幅保持 15 秒（32 位顺序需要阅读时间），优先于其他提示
+  } else if (state.mock) {
+    showBanner("MOCK 演练模式：判定结果随机模拟（不跑 pytest、不调验题模型、不碰 arena_repo）。", "mock");
   } else if (!st.arena_ready) {
     showBanner("arena_repo 未就绪：请确认 config.json 的 arena_repo_path 指向已存在的独立 git 仓库（含 src/ 与 tests/）。在此之前仅能浏览页面，无法评测。", "warn");
   } else {
@@ -144,8 +156,16 @@ function renderState(st, inbox, currentStep) {
   renderTestRow("t-hidden", sum && sum.hidden);
 
   // 按钮可用性（已导入材料 或 inbox/ 中检测到材料均可直接判定）
-  $("btn-judge-answer").disabled = !(st.arena_ready && st.phase === "answering" && (st.pending_answer || inboxAnswer));
-  $("btn-judge-proposal").disabled = !(st.arena_ready && st.phase === "proposing" && (st.pending_proposal || inboxProposal));
+  // MOCK 演练模式：无需材料、无需 arena，按钮随阶段直接可用
+  const finished = st.status === "finished";
+  $("btn-judge-answer").disabled = !(
+    (state.mock && st.phase === "answering" && !finished) ||
+    (st.arena_ready && st.phase === "answering" && (st.pending_answer || inboxAnswer))
+  );
+  $("btn-judge-proposal").disabled = !(
+    (state.mock && st.phase === "proposing" && !finished) ||
+    (st.arena_ready && st.phase === "proposing" && (st.pending_proposal || inboxProposal))
+  );
   $("btn-inject-rules").disabled = !st.arena_ready;
   $("btn-restore").disabled = !st.arena_ready;
   $("btn-upload-answer").disabled = !st.arena_ready;
@@ -507,7 +527,7 @@ async function loadLog() {
 async function refreshAll() {
   const data = await api("/api/state");
   if (data.ok) {
-    renderState(data.state || {}, data.inbox || {}, data.step || null);
+    renderState(data.state || {}, data.inbox || {}, data.step || null, data.mock);
   }
   loadLog();
 }
@@ -544,10 +564,13 @@ async function uploadAnswer() {
 
 async function judgeAnswer() {
   const msg = $("answer-msg");
-  if (!confirm("确认验收当前选手的答题？将应用已上传的业务文件并运行历史+隐藏测试。")) {
+  const ask = state.mock
+    ? "确认验收（MOCK 演练）？判定结果将随机模拟，不运行 pytest、不读写 arena_repo。"
+    : "确认验收当前选手的答题？将应用已上传的业务文件并运行历史+隐藏测试。";
+  if (!confirm(ask)) {
     return;
   }
-  setMsg(msg, "评测中…（应用文件 → 运行 pytest，可能需要一些时间）");
+  setMsg(msg, state.mock ? "MOCK 判定中…" : "评测中…（应用文件 → 运行 pytest，可能需要一些时间）");
   state.runningStep = 2;  // 判定运行中
   renderStepper(state, 3);
   $("btn-judge-answer").disabled = true;
@@ -592,10 +615,13 @@ async function uploadProposal() {
 
 async function judgeProposal() {
   const msg = $("proposal-msg");
-  if (!confirm("确认校验出题并交棒？将调用验题模型自证（单次调用，不重试），全绿才交棒。")) {
+  const ask = state.mock
+    ? "确认校验出题（MOCK 演练）？判定结果将随机模拟，不调用验题模型、不读写 arena_repo。"
+    : "确认校验出题并交棒？将调用验题模型自证（单次调用，不重试），全绿才交棒。";
+  if (!confirm(ask)) {
     return;
   }
-  setMsg(msg, "验题中…（复制 arena → 调用验题模型 → 运行 pytest，可能耗时较长）");
+  setMsg(msg, state.mock ? "MOCK 验题中…" : "验题中…（复制 arena → 调用验题模型 → 运行 pytest，可能耗时较长）");
   state.runningStep = 4;  // 自证运行中
   renderStepper(state, 4);
   $("btn-judge-proposal").disabled = true;
@@ -766,6 +792,34 @@ function runDrawAnimation(order, players) {
   });
 }
 
+/* ---------------- MOCK 演练模式开关 ---------------- */
+
+async function toggleMock() {
+  const on = !state.mock;
+  const ask = on
+    ? "开启 MOCK 演练模式？\n\n之后「验收答题 / 校验出题」的判定结果将随机模拟：\n不运行 pytest、不调用验题模型、不读写 arena_repo、不需要材料。\n用于上真实流程前预演整场操作。"
+    : "关闭 MOCK 演练模式，回到真实评测？\n（此后判定将真实运行 pytest / 调用验题模型）";
+  if (!confirm(ask)) {
+    return;
+  }
+  const btn = $("btn-mock");
+  btn.disabled = true;
+  const data = await api("/api/mock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: on }),
+  });
+  btn.disabled = false;
+  if (!data.ok) {
+    showBanner("切换失败: " + (data.error || ""), "error");
+    return;
+  }
+  state.mock = on;
+  showBanner(on ? "MOCK 演练模式已开启（判定随机模拟）" : "已回到真实评测模式", on ? "mock" : "info");
+  state.bannerHoldUntil = Date.now() + 5000;
+  fullRefresh();
+}
+
 /* ---------------- 工具 ---------------- */
 
 function el(tag, attrs = {}, text) {
@@ -792,6 +846,8 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-edit-models").addEventListener("click", enterModelEdit);
   $("btn-models-save").addEventListener("click", saveModelEdits);
   $("btn-models-cancel").addEventListener("click", exitModelEdit);
+  // MOCK 演练模式开关
+  $("btn-mock").addEventListener("click", toggleMock);
   // 调试抽屉（录屏时保持关闭）
   $("btn-debug").addEventListener("click", () => $("debug-drawer").classList.toggle("is-hidden"));
   $("btn-debug-close").addEventListener("click", () => $("debug-drawer").classList.add("is-hidden"));

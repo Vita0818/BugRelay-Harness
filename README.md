@@ -200,6 +200,19 @@ python -m cli.bugrelay web                             # 启动 Web
 | `pytest_args` | 传给 pytest 的参数（默认 `["-q"]`，框架会追加 junitxml/legacy 等解析用参数） |
 | `state_file` / `hidden_tests_dir` / `prompts_dir` / `backups_dir` | 框架自身目录布局 |
 | `inbox_dir` | 材料投递目录（默认 `inbox`，可指向 Agent 的产物输出目录，见 §5.3） |
+| `mock` | MOCK 演练模式开关（默认 `false`）。开启后判定结果随机模拟：不跑 pytest、不调验题模型、不读写 arena_repo、不需要材料，但状态推进（轮次/阶段/淘汰/积分/日志）与真实流程完全一致。可经 Web 顶栏「MOCK」按钮或 `POST /api/mock` 运行时切换（写回本文件） |
+
+## 7.1 MOCK 演练模式（上真实流程前预演整场操作）
+
+用途：不接 arena_repo、不调验题模型，把"抽签 → 作答 → 判定 → 出题 → 自证 → 交棒/淘汰"整条操作链自己走一遍。
+
+- **开启**：Web 顶栏「MOCK」按钮（confirm 后生效）或 `POST /api/mock {"enabled": true}`；
+- **判定随机**：每次点「验收答题 / 校验出题」随机出 PASS/FAIL（约 65% PASS），日志与返回值均带 `[MOCK]` 标记；
+- **状态推进与真实一致**：PASS 进入下一阶段、出题合法则轮次 +1 交棒；FAIL 淘汰当前选手并切换下一位；
+- **不碰任何真实资源**：不运行 pytest、不调用验题模型、不读写 arena_repo、不要求 inbox/ 上传材料（arena 未就绪也可演练）；
+- **演练需求占位**：交棒后 `current_prompt_file` 为 `mock://round_N` 标记，需求面板显示占位文本；
+- **收尾**：演练完点「抽签」重置进度，再关 MOCK 回到真实评测（顶栏按钮 / `POST /api/mock {"enabled": false}` / 改 config.json 均可）。
+
 
 ## 8. 目录结构
 

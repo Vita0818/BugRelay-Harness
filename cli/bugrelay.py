@@ -95,6 +95,8 @@ def cmd_status(_args) -> int:
         elim = state.get("eliminated") or []
         table.add_row("淘汰", ("%d 人：%s" % (len(elim), ", ".join(elim))) if elim else "（无）")
         table.add_row("arena_ready", "就绪" if state.get("arena_ready") else "未就绪（arena_repo 不存在或不是 git 仓库）")
+        table.add_row("MOCK 演练", "开启（判定随机模拟：不跑 pytest / 不调验题模型 / 不碰 arena_repo）"
+                      if judge.is_mock_enabled() else "关闭（真实评测）")
         table.add_row("规范注入", ("已注入（TESTING_GUIDELINES.md 在仓库中）" if state.get("rules_injected")
                                    else ("未注入（arena 就绪后自动补）" if state.get("arena_ready") else "未注入（arena 未就绪）")))
         table.add_row("inbox 材料", "、".join(inbox_parts) or "（空）")
@@ -115,6 +117,7 @@ def cmd_status(_args) -> int:
         elim = state.get("eliminated") or []
         print("淘汰      : %s" % (("%d 人：%s" % (len(elim), ", ".join(elim))) if elim else "（无）"))
         print("arena     : %s" % ("就绪" if state.get("arena_ready") else "未就绪"))
+        print("MOCK 演练 : %s" % ("开启（判定随机模拟）" if judge.is_mock_enabled() else "关闭（真实评测）"))
         print("规范注入  : %s" % ("已注入" if state.get("rules_injected") else "未注入"))
         print("inbox     : %s" % ("、".join(inbox_parts) or "（空）"))
         print("当前需求  : %s" % (state.get("current_prompt_file") or "（等待首轮需求）"))
