@@ -454,11 +454,14 @@ async function saveModelEdits() {
 /* ---------------- 四步流程条 ---------------- */
 
 function renderStepper(st, currentStep) {
-  // 当前所在步骤（等待材料的位置）：answering->① 作答，proposing->③ 出题
-  const waiting = currentStep || (st.phase === "proposing" ? 3 : 1);
+  // 时间顺序：① 作答 ② 判定 ③ 出题 ④ 自证（2×2 布局：上排选手①③，下排框架②④）
+  // 串行铁律：同一时刻最多一格黑。
+  // - 空闲时：waiting 格 active（等待材料）
+  // - 评测运行中：仅 runningStep 格 ongoing（呼吸黑），之前的格 done，之后的格保持中性
+  const running = state.runningStep || null;
+  const waiting = running ? running + 1 : (currentStep || (st.phase === "proposing" ? 3 : 1));
   const cur = st.current_player || "";
   const players = st.players || {};
-  // 时间顺序：① 作答 ② 判定 ③ 出题 ④ 自证（2×2 布局：上排选手①③，下排框架②④）
   const whoTexts = [
     cur ? cur + " 正在改码" : "等待选手",
     "框架跑测试",
@@ -469,12 +472,12 @@ function renderStepper(st, currentStep) {
     const el = $("step-" + n);
     el.querySelector(".tnode-who").textContent = whoTexts[n - 1];
     let cls = "tnode";
-    if (state.runningStep === n) {
-      cls += " ongoing";        // 评测运行中（判定/自证）
+    if (running === n) {
+      cls += " ongoing";        // 评测运行中（判定/自证），唯一黑格
     } else if (n < waiting) {
       cls += " done";           // 本轮已完成
-    } else if (n === waiting) {
-      cls += " active";         // 等待材料（当前）
+    } else if (!running && n === waiting) {
+      cls += " active";         // 等待材料（当前），仅空闲时显示
     }
     el.className = cls;
     if (st.status === "finished" && n === waiting) {
