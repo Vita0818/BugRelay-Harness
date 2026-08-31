@@ -45,13 +45,15 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 /* ---------- 顶栏：赛况横幅 ---------- */
 .topbar {
   display: flex;
-  align-items: baseline;
-  gap: 18px;
-  padding: 10px 18px;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
   white-space: nowrap;
   overflow: hidden;
 }
-.brand { font-weight: 800; letter-spacing: 0.12em; font-size: 14px; color: var(--foreground); }
+.brand { font-weight: 800; letter-spacing: 0.12em; font-size: 16px; color: var(--foreground); }
 
 /* MOCK 演练徽章：虚线边框提示"这是模拟"，开启时黑底反白 */
 .mock-badge {
@@ -63,67 +65,72 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   letter-spacing: 0.08em;
 }
 .mock-badge.is-hidden { display: none; }
-.hero-round { color: var(--muted); font-size: 13px; }
-.hero-round b { font-size: 17px; }
+.hero-round { color: var(--muted); font-size: 15px; }
+.hero-round b { font-size: 21px; }
 .hero-player {
-  font-size: 30px;
+  font-size: 36px;
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1;
 }
-.meta { color: var(--muted); font-size: 11.5px; }
+.meta { color: var(--muted); font-size: 13px; }
 .meta b { font-weight: 700; }
 
-/* ---------- 主画面：接力赛道 ---------- */
+/* ---------- 主画面：2×2 四格阶段 ----------
+   上排 = 选手创作（1 作答 + 3 出题）；下排 = 框架校验（2 判定 + 4 自证）。
+   左列答题链路 1→2，右列出题链路 3→4。格子撑满主画面，不再留空。 */
 .arena {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 26px;
+  gap: 14px;
   min-height: 0;
 }
 .track {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 14px;
 }
 .tnode {
   position: relative;
-  flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   text-align: center;
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
-  padding: 26px 10px 18px;
+  padding: 18px 14px;
   background: var(--background);
   transition: background 0.18s, border-color 0.18s;
 }
 .tnode-num {
-  width: 58px;
-  height: 58px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   border: 2px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 27px;
   font-weight: 800;
   color: var(--faint);
 }
 .tnode-name {
-  margin: 14px 0 4px;
-  font-size: 26px;
+  margin: 16px 0 6px;
+  font-size: 34px;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--muted);
   line-height: 1;
 }
 .tnode-who {
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--muted);
   white-space: nowrap;
@@ -132,12 +139,12 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   max-width: 100%;
 }
 .tnode-state {
-  margin-top: 12px;
-  padding-top: 9px;
+  margin-top: 14px;
+  padding-top: 10px;
   border-top: 1px solid var(--line);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--faint);
-  width: 100%;
+  width: 70%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -177,27 +184,6 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   50% { opacity: 0.8; }
 }
 
-/* 节点间箭头：流程已过则实心 */
-.tarrow {
-  flex: 0 0 54px;
-  position: relative;
-  align-self: center;
-  height: 2px;
-  background: var(--line);
-  margin: 0 2px;
-}
-.tarrow::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  top: -5px;
-  border-left: 9px solid var(--line);
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-}
-.tarrow.passed { background: var(--foreground); }
-.tarrow.passed::after { border-left-color: var(--foreground); }
-
 /* 象征性需求提示（只示意"已给出"，不展示全文） */
 .prompt-symbol {
   text-align: center;
@@ -209,18 +195,47 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 .prompt-symbol.given::before { content: "● "; }
 .prompt-symbol:not(.given)::before { content: "○ "; }
 
-/* ---------- 底栏：比分 + 主操作 ---------- */
-.actionbar {
+/* ---------- 底栏：判定结果（常驻）+ 主操作 ---------- */
+.console {
   display: flex;
-  align-items: center;
-  gap: 14px;
+  align-items: stretch;
+  gap: 18px;
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
-  padding: 10px 18px;
-  white-space: nowrap;
+  padding: 14px 20px;
 }
-.scores { color: var(--muted); font-size: 13px; }
-.count { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+.result-zone {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+.result-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.result-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.result-counts { color: var(--muted); font-size: 13.5px; }
+.count { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.result-msg {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.result-msg.ok { color: var(--foreground); font-weight: 700; }
+.result-msg.err { color: var(--foreground); font-weight: 700; }
 
 .badge {
   display: inline-block;
@@ -231,10 +246,17 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
   border: 1px solid var(--line);
   color: var(--muted);
 }
+.badge.big { font-size: 17px; padding: 2px 14px; border-radius: 7px; }
 .badge.PASS { border-color: var(--foreground); color: var(--foreground); font-weight: 800; }
 .badge.FAIL { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
 
-#action-msgs { min-width: 0; overflow: hidden; }
+.op-zone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  white-space: nowrap;
+}
+#action-msgs { min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
 .op-msg { font-size: 11.5px; color: var(--muted); }
 .op-msg.ok { color: var(--foreground); font-weight: 700; }
 .op-msg.err { background: var(--foreground); color: var(--background); padding: 0 6px; border-radius: 4px; font-weight: 700; }
@@ -459,7 +481,7 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 /* ---------- 浮层横幅 ---------- */
 .banner {
   position: fixed;
-  top: 14px;
+  top: 96px;               /* 顶栏之下，避免遮挡赛况横幅 */
   left: 50%;
   transform: translateX(-50%);
   z-index: 65;
@@ -542,8 +564,8 @@ b.bad { background: var(--foreground); color: var(--background); padding: 0 6px;
 /* 窄屏兜底 */
 @media (max-width: 900px) {
   body { overflow: auto; }
-  .track { flex-direction: column; gap: 10px; }
-  .tarrow { display: none; }
+  .track { grid-template-columns: 1fr; grid-template-rows: none; }
   .hero-player { font-size: 22px; }
-  .actionbar { flex-wrap: wrap; white-space: normal; }
+  .console { flex-direction: column; }
+  .op-zone { flex-wrap: wrap; white-space: normal; }
 }

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=17">
+<link rel="stylesheet" href="/static/style.css?v=18">
 </head>
 <body>
 
@@ -30,7 +30,9 @@
   <button id="btn-debug" class="btn ghost">调试</button>
 </header>
 
-<!-- 主画面：接力赛道（四阶段）+ 象征性需求提示 -->
+<!-- 主画面：2×2 四格阶段
+     上排 = 选手创作（作答 + 出题，一对）；下排 = 框架校验（判定 + 自证）。
+     左列是答题链路（1→2），右列是出题链路（3→4）。 -->
 <main class="arena">
   <div class="track">
     <div class="tnode" id="step-1">
@@ -39,21 +41,18 @@
       <div class="tnode-who">等待选手</div>
       <div class="tnode-state">等待交付</div>
     </div>
-    <div class="tarrow" id="arrow-1"></div>
-    <div class="tnode" id="step-2">
-      <div class="tnode-num">2</div>
-      <div class="tnode-name">判定</div>
-      <div class="tnode-who">框架跑测试</div>
-      <div class="tnode-state">历史 + 隐藏</div>
-    </div>
-    <div class="tarrow" id="arrow-2"></div>
     <div class="tnode" id="step-3">
       <div class="tnode-num">3</div>
       <div class="tnode-name">出题</div>
       <div class="tnode-who">等待选手</div>
       <div class="tnode-state">给下一棒需求</div>
     </div>
-    <div class="tarrow" id="arrow-3"></div>
+    <div class="tnode" id="step-2">
+      <div class="tnode-num">2</div>
+      <div class="tnode-name">判定</div>
+      <div class="tnode-who">框架跑测试</div>
+      <div class="tnode-state">历史 + 隐藏</div>
+    </div>
     <div class="tnode" id="step-4">
       <div class="tnode-num">4</div>
       <div class="tnode-name">自证</div>
@@ -64,19 +63,27 @@
   <div class="prompt-symbol" id="prompt-symbol">○ 等待首轮需求</div>
 </main>
 
-<!-- 底栏：比分 + 主操作 -->
-<footer class="actionbar">
-  <span class="scores">
-    历史 <b id="t-history" class="badge">–</b><span id="t-history-count" class="count"></span>
-    <span class="sep">·</span>
-    隐藏 <b id="t-hidden" class="badge">–</b><span id="t-hidden-count" class="count"></span>
-  </span>
-  <span id="action-msgs">
-    <span id="answer-msg" class="op-msg"></span><span id="proposal-msg" class="op-msg"></span><span id="rules-msg" class="op-msg"></span>
-  </span>
-  <span class="spacer"></span>
-  <button id="btn-judge-answer" class="btn primary big">验收答题</button>
-  <button id="btn-judge-proposal" class="btn primary big">校验出题并交棒</button>
+<!-- 底栏：判定结果（常驻）+ 主操作 -->
+<footer class="console">
+  <div class="result-zone">
+    <div class="result-line">
+      <span class="result-label">判定结果</span>
+      <b id="t-overall" class="badge big">–</b>
+      <span class="result-counts">
+        历史 <b id="t-history" class="badge">–</b><span id="t-history-count" class="count"></span>
+        <span class="sep">·</span>
+        隐藏 <b id="t-hidden" class="badge">–</b><span id="t-hidden-count" class="count"></span>
+      </span>
+    </div>
+    <div id="result-msg" class="result-msg">暂无判定</div>
+  </div>
+  <div class="op-zone">
+    <span id="action-msgs">
+      <span id="answer-msg" class="op-msg"></span><span id="proposal-msg" class="op-msg"></span><span id="rules-msg" class="op-msg"></span>
+    </span>
+    <button id="btn-judge-answer" class="btn primary big">验收答题</button>
+    <button id="btn-judge-proposal" class="btn primary big">校验出题并交棒</button>
+  </div>
 </footer>
 
 <!-- 判定全屏定格（2 秒自动消失） -->
@@ -161,6 +168,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=17"></script>
+<script src="/static/main.js?v=18"></script>
 </body>
 </html>

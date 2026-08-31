@@ -133,7 +133,8 @@ function renderState(st, inbox, currentStep, mockOn) {
   } else if (Date.now() < (state.bannerHoldUntil || 0)) {
     // 抽签/还原等临时结果横幅保持 15 秒（32 位顺序需要阅读时间），优先于其他提示
   } else if (state.mock) {
-    showBanner("MOCK 演练模式：判定结果随机模拟（不跑 pytest、不调验题模型、不碰 arena_repo）。", "mock");
+    // MOCK 常驻提示交给顶栏徽章，不挂浮层横幅（避免遮挡赛况）
+    hideBanner();
   } else if (!st.arena_ready) {
     showBanner("arena_repo 未就绪：请确认 config.json 的 arena_repo_path 指向已存在的独立 git 仓库（含 src/ 与 tests/）。在此之前仅能浏览页面，无法评测。", "warn");
   } else {
@@ -150,10 +151,22 @@ function renderState(st, inbox, currentStep, mockOn) {
     ps.className = "prompt-symbol";
   }
 
-  // 底部两行测试结果（只显示总结果与计数）
+  // 判定结果面板（常驻）：总判定 + 历史/隐藏两行计数 + 一句结果说明
   const sum = st.last_test_summary;
+  const overall = $("t-overall");
+  if (sum && sum.overall) {
+    overall.textContent = sum.overall;
+    overall.className = "badge big " + sum.overall;
+  } else {
+    overall.textContent = "–";
+    overall.className = "badge big";
+  }
   renderTestRow("t-history", sum && sum.history);
   renderTestRow("t-hidden", sum && sum.hidden);
+  const rmsg = $("result-msg");
+  rmsg.textContent = st.last_action_msg || "暂无判定";
+  rmsg.className = "result-msg" +
+    (st.last_result === "PASS" ? " ok" : (st.last_result === "FAIL" ? " err" : ""));
 
   // 按钮可用性（已导入材料 或 inbox/ 中检测到材料均可直接判定）
   // MOCK 演练模式：无需材料、无需 arena，按钮随阶段直接可用
@@ -467,11 +480,6 @@ function renderStepper(st, currentStep) {
     el.className = cls;
     if (st.status === "finished" && n === waiting) {
       el.className = "tnode";
-    }
-    // 节点间箭头：与节点完成态一致（n < waiting 即已走过）
-    const arrow = $("arrow-" + n);
-    if (arrow) {
-      arrow.className = "tarrow" + (n < waiting ? " passed" : "");
     }
   }
 }
