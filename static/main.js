@@ -60,13 +60,13 @@ function hideBanner() {
 
 let verdictTimer = null;
 
-function showVerdict(word, detail, sub) {
+function showVerdict(word, detail, sub, tone) {
   const v = $("verdict");
   $("verdict-label").textContent = state.mock ? "MOCK 演练 VERDICT" : "判定 VERDICT";
   $("verdict-word").textContent = word || "–";
-  // 全屏色块：整屏 PASS 绿 / FAIL 红，白字
+  // 全屏色块：PASS 绿；RED/FAIL 红，白字
   v.classList.remove("hidden", "pass", "fail");
-  v.classList.add(word === "PASS" ? "pass" : "fail");
+  v.classList.add((tone || word) === "PASS" ? "pass" : "fail");
   $("verdict-detail").textContent = detail || "";
   $("verdict-sub").textContent = sub || "";
   if (verdictTimer) {
@@ -90,6 +90,8 @@ function renderState(st, inbox, currentStep, mockOn) {
   state.lastState = st;
   const inboxAnswer = inbox && inbox.answer;
   const inboxProposal = inbox && inbox.proposal;
+  const proof = st.pending_proof || null;
+  const awaitingProof = !!(proof && proof.stage === "awaiting_manual_proof");
 
   // MOCK 徽章与开关按钮
   $("mock-badge").classList.toggle("is-hidden", !state.mock);
@@ -162,14 +164,14 @@ function renderState(st, inbox, currentStep, mockOn) {
   rmsg.className = "result-msg" +
     (st.last_result === "PASS" ? " ok" : (st.last_result === "FAIL" ? " err" : ""));
 
-  // 主按钮「NEXT」：按阶段自动决定动作（answering→验收答题，proposing→校验出题并交棒）
+  // 主按钮「NEXT」：answering 验收答题；proposing 第一次全红、手动自证后第二次全绿。
   const finished = st.status === "finished";
   const advBtn = $("btn-advance");
   advBtn.textContent = "NEXT";
   if (st.phase === "proposing") {
     advBtn.disabled = !(
       (state.mock && !finished) ||
-      (st.arena_ready && (st.pending_proposal || inboxProposal))
+      (st.arena_ready && (awaitingProof || st.pending_proposal || inboxProposal))
     );
   } else {
     advBtn.disabled = !(
@@ -189,10 +191,12 @@ function renderState(st, inbox, currentStep, mockOn) {
   } else if (inboxAnswer && st.phase === "answering" && st.arena_ready) {
     setMsg($("answer-msg"), "检测到 inbox/ 中有答题材料（answer.zip / answer/），点击「验收答题」将自动导入并评测", "ok");
   }
-  if (st.pending_proposal) {
-    setMsg($("proposal-msg"), "已导入待校验出题材料，可点击「校验出题并交棒」", "ok");
+  if (awaitingProof) {
+    setMsg($("proposal-msg"), "全红已通过，手动自证完成后再次点击 NEXT", "ok");
+  } else if (st.pending_proposal) {
+    setMsg($("proposal-msg"), "出题材料已导入，点击 NEXT 运行全红判定", "ok");
   } else if (inboxProposal && st.phase === "proposing" && st.arena_ready) {
-    setMsg($("proposal-msg"), "检测到 inbox/ 中有出题材料（next_prompt.md + hidden_tests.py），点击「校验出题并交棒」将自动导入并验题", "ok");
+    setMsg($("proposal-msg"), "检测到 inbox/ 出题材料，点击 NEXT 自动导入并运行全红判定", "ok");
   }
 }
 
@@ -464,7 +468,7 @@ function renderStepper(st, currentStep) {
     cur ? cur + " 正在改码" : "等待选手",
     "框架跑测试",
     cur ? cur + " 写下一棒需求" : "等待选手",
-    "验题模型重实现",
+    "手动启动同模型 Agent",
   ];
   for (let n = 1; n <= 4; n++) {
     const el = $("step-" + n);
@@ -628,20 +632,27 @@ async function uploadProposal() {
 
 async function judgeProposal() {
   const msg = $("proposal-msg");
-  setMsg(msg, state.mock ? "MOCK 验题中…" : "验题中…（复制 arena → 调用验题模型 → 运行 pytest，可能耗时较长）");
+  const proof = state.lastState && state.lastState.pending_proof;
+  const awaitingProof = !!(proof && proof.stage === "awaiting_manual_proof");
+  setMsg(msg, state.mock
+    ? (awaitingProof ? "MOCK 全绿判定中…" : "MOCK 全红判定中…")
+    : (awaitingProof ? "全绿判定中…（复制手动自证结果 → 注入新测试 → 运行 pytest）"
+                     : "全红判定中…（历史必须全绿，新测试必须全部红）"));
   state.runningStep = 4;  // ④ 自证运行中（编号即时间顺序）
   renderStepper(state, 4);
   $("btn-advance").disabled = true;
   const data = await api("/api/judge-proposal", { method: "POST" });
   state.runningStep = null;
   if (data.ok) {
+    const redGatePassed = data.gate === "RED" && data.result === "PASS";
     showVerdict(
-      data.result,
+      redGatePassed ? "RED" : data.result,
       (data.history && data.hidden)
         ? "历史 " + data.history.passed + "/" + data.history.total +
           " · 隐藏 " + data.hidden.passed + "/" + data.hidden.total
         : "",
-      data.message || ""
+      data.message || "",
+      redGatePassed ? "FAIL" : null
     );
     setMsg(msg, data.message || data.result, data.result === "PASS" ? "ok" : "err");
   } else {

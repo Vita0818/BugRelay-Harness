@@ -7,7 +7,7 @@
     python -m cli.bugrelay judge-answer                 # 验收答题
     python -m cli.bugrelay load-proposal <md> <py>      # 导入出题材料
     python -m cli.bugrelay set-first-prompt <md>        # 导入首轮需求（开局一次性）
-    python -m cli.bugrelay judge-proposal              # 校验出题并交棒
+    python -m cli.bugrelay judge-proposal              # 第一次全红；手动自证后第二次全绿并交棒
     python -m cli.bugrelay restore                     # 还原最近备份
     python -m cli.bugrelay set-model FBL "Claude 5.5"  # 更新选手实际模型（模型迭代）
     python -m cli.bugrelay draw                        # 顺序抽签（每场开始时）
@@ -59,6 +59,8 @@ def _bootstrap() -> None:
 
 def _step_label(state) -> str:
     """时间顺序四步（① 作答 ② 判定 ③ 出题 ④ 自证）中当前所在步骤（等待材料的环节）。"""
+    if (state.get("pending_proof") or {}).get("stage") == "awaiting_manual_proof":
+        return "4/4 手动自证（在独立目录完成后再次推进全绿判定）"
     return "3/4 出题（等待需求+隐藏测试）" if state.get("phase") == "proposing" else "1/4 作答（等待业务代码改动）"
 
 
@@ -96,12 +98,16 @@ def cmd_status(_args) -> int:
         elim = state.get("eliminated") or []
         table.add_row("淘汰", ("%d 人：%s" % (len(elim), ", ".join(elim))) if elim else "（无）")
         table.add_row("arena_ready", "就绪" if state.get("arena_ready") else "未就绪（arena_repo 不存在或不是 git 仓库）")
-        table.add_row("MOCK 演练", "开启（判定随机模拟：不跑 pytest / 不调验题模型 / 不碰 arena_repo）"
+        table.add_row("MOCK 演练", "开启（随机模拟全绿/全红：不跑 pytest / 不碰 arena_repo）"
                       if judge.is_mock_enabled() else "关闭（真实评测）")
         table.add_row("规范注入", ("已注入（TESTING_GUIDELINES.md 在仓库中）" if state.get("rules_injected")
                                    else ("未注入（arena 就绪后自动补）" if state.get("arena_ready") else "未注入（arena 未就绪）")))
         table.add_row("inbox 材料", "、".join(inbox_parts) or "（空）")
         table.add_row("当前需求", str(state.get("current_prompt_file")) or "（等待首轮需求）")
+        proof = state.get("pending_proof") or {}
+        if proof.get("stage") == "awaiting_manual_proof":
+            table.add_row("自证目录", str(proof.get("repo") or "（缺失）"))
+            table.add_row("自证提示词", str(proof.get("prompt") or "（缺失）"))
         table.add_row("最近结果", str(state.get("last_result")))
         scores = state.get("scores") or {}
         table.add_row("积分", ", ".join("%s:%s" % (k, v) for k, v in scores.items()) or "（无）")
@@ -122,6 +128,10 @@ def cmd_status(_args) -> int:
         print("规范注入  : %s" % ("已注入" if state.get("rules_injected") else "未注入"))
         print("inbox     : %s" % ("、".join(inbox_parts) or "（空）"))
         print("当前需求  : %s" % (state.get("current_prompt_file") or "（等待首轮需求）"))
+        proof = state.get("pending_proof") or {}
+        if proof.get("stage") == "awaiting_manual_proof":
+            print("自证目录  : %s" % (proof.get("repo") or "（缺失）"))
+            print("自证提示词: %s" % (proof.get("prompt") or "（缺失）"))
         print("最近结果  : %s" % state.get("last_result"))
         print("说明      : %s" % (state.get("last_action_msg") or ""))
     return 0
@@ -303,7 +313,9 @@ def build_parser() -> argparse.ArgumentParser:
         "prompt", help="打印当前需求全文（复制粘贴给选手 Agent 的提示词）")
     p_prompt.set_defaults(func=cmd_prompt)
 
-    p_jprop = sub.add_parser("judge-proposal", help="校验出题并交棒（等同 /api/judge-proposal；inbox/ 有材料时自动拾取）")
+    p_jprop = sub.add_parser(
+        "judge-proposal",
+        help="出题校验：第一次全红并创建自证目录；手动完成后第二次全绿并交棒")
     p_jprop.set_defaults(func=cmd_judge_proposal)
 
     p_restore = sub.add_parser("restore", help="还原 arena_repo 到最近备份（等同 /api/restore）")

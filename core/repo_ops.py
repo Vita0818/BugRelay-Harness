@@ -1,8 +1,8 @@
 """arena_repo 仓库操作（只做机械操作，不含业务逻辑）。
 
 职责：
-- git 命令封装（status / rev-parse / checkout / clean）；
-- arena_repo 的全量复制（供验题临时目录）；
+- git 命令封装（rev-parse / checkout / clean）与历史测试内容哈希清单；
+- arena_repo 的全量复制（供 RED/GREEN 与手动自证目录）；
 - 上传包（zip/目录/单文件）的安全解压与"只进 business_dir"的应用；
 - 目录清空与从备份还原的底层原语。
 
@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -29,6 +30,7 @@ IGNORE_SUFFIXES = (".pyc", ".pyo")
 
 # 文件树接口额外过滤的目录（规范【5】：文件树必须过滤 hidden_tests/）
 TREE_IGNORE_NAMES = set(IGNORE_NAMES) | {"hidden_tests", "tmp", ".venv", "venv", "node_modules", ".idea", ".vscode"}
+TRANSIENT_HIDDEN_PREFIXES = ("test_hidden_", "test_proposal_red_", "test_proposal_green_")
 
 
 def _safe_arena(cfg: Optional[Dict] = None) -> Tuple[Optional[Path], Optional[str]]:
@@ -108,31 +110,41 @@ def current_commit(repo: Optional[Path] = None) -> Optional[str]:
     return None
 
 
-def tests_status_map() -> Dict[str, str]:
-    """返回历史测试目录下每个条目的 git 状态映射 {path: "XY"}。
+def tests_status_map(ignore_names: Optional[set[str]] = None) -> Dict[str, str]:
+    """返回历史测试目录的内容级清单。
 
-    用于"应用前后对比"式篡改检测：对比两次快照即可发现新增/修改/删除，
-    且不会误伤"人类从未 commit 过 arena（全 untracked）"的初始场景。
-    git 不可用时返回空映射（宽松处理，由备份/回滚兜底）。
+    清单覆盖目录、普通文件内容哈希和符号链接目标，因此已跟踪、未跟踪或原本已修改的
+    测试都能被准确比较；ignore_names 用于 pytest 期间排除框架临时注入的新测试文件。
     """
     cfg = load_config()
     p, err = _safe_arena(cfg)
     tdir = cfg.get("history_tests_dir", "tests")
     if p is None:
         return {}
-    r = git(p, "status", "--porcelain", "--", tdir)
-    if r.returncode != 0:
+    root = p / tdir
+    if not root.exists():
         return {}
+    ignored = set(ignore_names or set())
     mapping: Dict[str, str] = {}
-    for line in r.stdout.splitlines():
-        line = line.rstrip("\n")
-        if len(line) < 4:
+    for path in sorted(root.rglob("*"), key=lambda item: item.as_posix()):
+        rel = path.relative_to(p)
+        if path.name in ignored:
             continue
-        status = line[:2]
-        rest = line[3:]
-        # rename 记录形如 "R  old -> new"，归到新路径
-        path = rest.split(" -> ")[-1].strip('"')
-        mapping[path] = status
+        if any(part in ("__pycache__", ".pytest_cache") for part in rel.parts):
+            continue
+        if path.suffix in IGNORE_SUFFIXES or path.name == ".DS_Store":
+            continue
+        key = rel.as_posix()
+        if path.is_symlink():
+            mapping[key] = "link:" + os.readlink(path)
+        elif path.is_dir():
+            mapping[key] = "dir"
+        elif path.is_file():
+            digest = hashlib.sha256()
+            with path.open("rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            mapping[key] = "file:" + digest.hexdigest()
     return mapping
 
 
@@ -141,7 +153,7 @@ def _ignore_filter(name: str) -> bool:
 
 
 def copy_arena_to(dst: Path, for_verify: bool = True) -> None:
-    """把 arena_repo 全量复制到 dst（验题临时目录用）。
+    """把 arena_repo 全量复制到 dst（RED/GREEN 或手动自证工作区）。
 
     for_verify=True 时额外排除 .git / tmp / hidden_tests（临时目录跑 pytest 不需要 git；
     hidden_tests 本就位于 harness 内，此处为防御性排除）；
@@ -150,8 +162,12 @@ def copy_arena_to(dst: Path, for_verify: bool = True) -> None:
     p, err = _safe_arena()
     if p is None:
         raise RuntimeError("arena_repo 未就绪: %s" % (err or ""))
-    extra = (".git", "tmp", "hidden_tests") if for_verify else ()
-    patterns = tuple(set(IGNORE_NAMES + extra))
+    if for_verify:
+        patterns = tuple(set(IGNORE_NAMES + (".git", "tmp", "hidden_tests")))
+    else:
+        # 手动自证工作区保留 .git，让 OpenCode/真人获得与正式仓库一致的上下文；
+        # 后续锁定清单会忽略 .git 的运行时变化，但仍保护 tests/ 与根级配置。
+        patterns = tuple(name for name in IGNORE_NAMES if name != ".git")
     shutil.copytree(p, dst, ignore=shutil.ignore_patterns(*patterns), dirs_exist_ok=True)
 
 
@@ -204,7 +220,7 @@ def apply_upload_to_business(upload_path: str | Path) -> Dict:
       - 只写入 business_dir（默认 src/），因此天然够不到 arena 顶层 tests/；
       - 上传内容顶层的 tests/ 目录整目录跳过（防篡改企图，记录 warning）；
       - zip 内唯一顶层目录恰为 business_dir 名（如 src/）时自动剥层；
-      - git 层面的前后快照对比由 judge.verify_answer 负责。
+      - tests/ 内容哈希的前后对比由 judge.verify_answer 负责。
     返回 {"ok", "applied", "skipped", "error", "warning"}。
     """
     cfg = load_config()
@@ -301,6 +317,8 @@ def build_tree(max_entries: int = 2000) -> Optional[Dict]:
                 break
             if c.name in TREE_IGNORE_NAMES or c.name.endswith(IGNORE_SUFFIXES):
                 continue
+            if c.is_file() and c.name.startswith(TRANSIENT_HIDDEN_PREFIXES):
+                continue
             counter["n"] += 1
             if c.is_dir():
                 nodes.append({"name": c.name, "path": str(c.relative_to(p)), "type": "dir",
@@ -330,6 +348,8 @@ def read_arena_file(rel: str, max_bytes: int = 512 * 1024) -> Dict:
         return {"ok": False, "error": "非法路径"}
     if rel.split("/")[0] == "hidden_tests":
         return {"ok": False, "error": "禁止访问 hidden_tests"}
+    if Path(rel).name.startswith(TRANSIENT_HIDDEN_PREFIXES):
+        return {"ok": False, "error": "禁止访问评测中的临时隐藏测试"}
     target = (p / rel).resolve()
     if not str(target).startswith(str(p) + os.sep):
         return {"ok": False, "error": "路径越界"}

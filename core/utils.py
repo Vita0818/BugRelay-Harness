@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -26,14 +27,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "arena_repo_path": "../arena_repo",
     "business_dir": "src",
     "history_tests_dir": "tests",
-    "verifier_model": {
-        "provider": "openai_compatible",
-        "base_url": "http://localhost:11434/v1",
-        "model": "llama-3.1:8b",
-        "api_key": "ollama",
-        "timeout_seconds": 600,
-    },
     "pytest_args": ["-q"],
+    "proposal_test_count": 3,
     "state_file": "state/match.json",
     "hidden_tests_dir": "hidden_tests",
     "prompts_dir": "prompts",
@@ -73,6 +68,9 @@ def default_state() -> Dict[str, Any]:
         "status": "running",         # running / finished
         "pending_answer": None,      # 已导入待验收的答题材料路径（.zip 或目录）
         "pending_proposal": None,    # 已导入待校验的出题材料 {"prompt": ..., "test": ...}
+        # 全红通过后创建的手动自证工作区。Harness 不启动 Agent；人类在 repo 路径中
+        # 手动打开 OpenCode，完成后再次推进，由 Harness 运行全绿判定。
+        "pending_proof": None,
         "last_test_summary": None,   # 最近一次评测的两行计数（仅计数，不含测试内容）
         "last_action_msg": None,     # 最近一次操作的简短人类可读说明
     }
@@ -222,6 +220,15 @@ def draw_order() -> Dict[str, Any]:
     - 成功后写 draw 日志，返回更新后的 state。
     """
     state = load_state()
+    proof = state.get("pending_proof") or {}
+    if proof.get("root"):
+        try:
+            tmp_root = TMP_DIR.resolve()
+            proof_root = Path(str(proof["root"])).resolve()
+            if proof_root != tmp_root and str(proof_root).startswith(str(tmp_root) + os.sep):
+                shutil.rmtree(proof_root, ignore_errors=True)
+        except Exception:
+            pass
     order = list(state.get("order") or [])
     if not order:
         order = list((state.get("players") or {}).keys())
@@ -241,6 +248,7 @@ def draw_order() -> Dict[str, Any]:
     state["status"] = "running"
     state["pending_answer"] = None
     state["pending_proposal"] = None
+    state["pending_proof"] = None
     state["last_result"] = None
     state["last_test_summary"] = None
     # MOCK 演练标记的需求不是真实文件：重置时清掉，避免关 MOCK 后一直显示占位文本

@@ -1,12 +1,14 @@
 # Bug Relay（Bug 接力）评测框架
 
-支撑 AI 编程接力竞技节目的 **评测框架 + Web 控制台 + CLI**。
+支撑 AI 编程接力竞技视频录制的 **评测框架 + Web 流程控制台 + CLI**。
 
 > 本框架由 [GLM-5.3](https://z.ai) 创建。
 
 > 本仓库只是 harness（评测框架）。**框架不碰 arena_repo 的业务逻辑，也不自动生成业务代码**；
 > 框架永远不主动启动、追踪、观测任何选手 Agent，也不与选手对话——它只在人类执行 CLI
 > 命令或点击 Web 按钮的瞬间工作：导入文件 → 跑 pytest → 记录结果 → 备份/回滚。
+> 所有 AI Agent 交互都由录制者手动完成；把 Agent 换成真人手写并交付同样的文件，Harness
+> 的流程与判定完全不变。Harness 是流程导演台、裁判台和记分牌，不是 Agent 编排器。
 
 ## 1. 仓库定位
 
@@ -20,7 +22,11 @@
 
 ## 2. 安装与部署
 
-依赖：fastapi、uvicorn、httpx、pytest、python-multipart（FastAPI 文件上传必需），可选 python-dotenv、rich（CLI 美化）。需要 **Python ≥ 3.9**。保持轻量。
+需要交给 Hermes Agent 在专用 Ubuntu VM 上部署时，直接使用完整任务书：
+[HERMES_DEPLOYMENT.md](HERMES_DEPLOYMENT.md)。
+
+依赖：fastapi、uvicorn、pytest、python-multipart（FastAPI 文件上传必需），可选
+python-dotenv、rich（CLI 美化）。需要 **Python ≥ 3.10**。Harness 不调用任何模型 API。
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate   # Ubuntu 系统 pip 受 PEP 668 限制，需用 venv
@@ -37,7 +43,9 @@ cd BugRelay-Harness
 ./run.sh 0.0.0.0 9000             # 自定义监听地址/端口
 ```
 
-验题模型（出题校验时才需要，可选）：Ubuntu 上安装 Ollama 后执行 `ollama pull llama-3.1:8b`，`config.json` 的 `base_url` 保持 `http://localhost:11434/v1` 即可。
+推荐把 Harness 和 arena 放在一台专门用于录制/评测的 Ubuntu 虚拟机中，但它们必须是
+**两个互相独立的 Git 仓库**。`BR-Code` 只是一个可供实战使用的 arena 示例，不是 Harness
+的内置子目录或运行时依赖。
 
 ### 指定 arena_repo 路径（三种方式，优先级从高到低）
 
@@ -51,6 +59,24 @@ cd BugRelay-Harness
    ```
 
 路径无效或未就绪时页面只提示不崩溃；指向 harness 自身或其祖先/子目录会被安全策略拒绝。
+
+推荐的 Ubuntu 虚拟机目录布局：
+
+```text
+/home/recorder/bugrelay/
+├── BR-Harness/   # 本仓库：网页、状态、备份、测试裁判
+└── BR-Code/      # 独立 arena Git 仓库；本次实战恰好使用它
+```
+
+启动前显式指向本次 arena：
+
+```bash
+cd /home/recorder/bugrelay/BR-Harness
+export BUGRELAY_ARENA_REPO=/home/recorder/bugrelay/BR-Code
+./run.sh
+```
+
+以后换另一套题，只需把环境变量改到另一个独立 arena；Harness 不依赖 `BR-Code` 这个名字。
 
 ## 3. 启动
 
@@ -70,7 +96,7 @@ uvicorn app:app --host 127.0.0.1 --port 8080
 
 ## 4. 赛制与裁判逻辑（实现说明）
 
-选手轮流接力，每轮三步。选手名单在 `state/match.json`：
+选手轮流接力，每轮四步。选手名单在 `state/match.json`：
 
 - `order`：接力顺序，使用**三字码**（如 `FBL`、`OPS`），日志与状态均用三字码标识；
 - `players`：三字码 → `{ "name": 总称, "model": 实际模型 }` 的映射，控制台选手席与 CLI
@@ -87,17 +113,21 @@ Mimo 系），增删选手只需同步改 `order`、`survivors`、`players`、`s
 
 1. **答题**：当前选手按上一棒留下的 `next_prompt.md`（仅需求，不含测试）修改 arena_repo 业务代码。
    人类导入其改动后点「验收答题」→ 框架备份 → 只把上传内容应用到 `src/`（严禁触碰 `tests/`，
-   应用前后用 git 快照对比，检测到篡改立即回滚并判 FAIL）→ 跑「历史 + 本轮隐藏」pytest →
+   应用前后及 pytest 结束后用内容哈希清单保护 `tests/`，检测到篡改立即回滚并判 FAIL）→
    全绿：隐藏测试永久移入 `tests/` 成为历史测试、代码保留、再备份；否则：回滚、选手淘汰、切换下一位。
    **答题环节不调用任何模型。**
-2. **出题**：答题通过后，选手提交给下一棒的需求文档 `next_prompt.md` + 隐藏测试 `hidden_tests.py`，
-   人类导入后点「校验出题并交棒」。
-3. **验题（自证）**：框架复制 arena_repo 到全新临时目录 `tmp/relay_<uuid>`，把需求**单次**喂给
-   验题模型（OpenAI 兼容 `/chat/completions`，不重试，超时即 FAIL），要求它仅凭需求重新实现一遍；
-   模型输出按 `=== FILE: 相对路径 ===` 文件块解析写入临时目录（无任何文件块直接判 FAIL）；
-   再把选手的 hidden_tests.py 拷入临时目录 `tests/` 跑 pytest（历史+隐藏）→ 全绿：需求存入
-   `prompts/`、新隐藏测试落入 `hidden_tests/`、轮次 +1、交棒；否则：回滚（恢复最近成功备份，
-   即出题者答题通过时的状态——**其已通过验收的代码依赛制保留**）、出题者淘汰、切换下一位。
+2. **出题**：答题通过后，选手提交给下一棒的需求文档 `next_prompt.md` + 三条新测试
+   `hidden_tests.py`。框架先在一次性副本上运行它们：历史测试必须继续全绿，新测试必须
+   实际收集三条并全部断言失败（全 RED）；零收集、skip、xfail、import/collection error
+   都不算有效 RED。
+3. **人工自证**：全红通过后，框架创建持久目录 `tmp/manual_proof_*/repo`，内容是当前正式
+   arena 的干净副本，**不含新隐藏测试**。网页进入第 ④ 阶段并暂停。录制者手动在该目录
+   打开全新的同模型 OpenCode（也可以由真人编码），把同目录旁的 `next_prompt.md` 粘贴进去。
+   Harness 不启动、不调用、不监控这个 Agent。
+4. **全绿与交棒**：人工自证完成后再次点 `NEXT`。框架先确认只有 `business_dir` 被修改，
+   再复制自证结果、注入同一份新测试并运行 pytest；历史 + 新测试必须全部 GREEN、无
+   skip/error。通过后只保存需求与隐藏测试并交棒，**自证代码丢弃，不写回正式 arena**；
+   失败则出题者淘汰，但其此前已通过答题验收的正式代码继续保留。
 
 规则：历史测试永增不减；淘汰只取消比赛资格，此前成功提交的代码留在 arena_repo 中成为后人的环境。
 
@@ -122,18 +152,19 @@ Mimo 系），增删选手只需同步改 `order`、`survivors`、`players`、`s
 
 控制台主画面是**横向 1×4 阶段带**，编号即时间顺序 ① 作答 → ② 判定 → ③ 出题 → ④ 自证，
 从左到右接力，实时显示当前选手所处步骤（黑底=当前/评测中、描边打勾=本轮已完成）；
-顶栏与底栏占据更多画面（赛况横幅 / 判定结果常驻面板）。**人类只需一个「推进」**
-按钮：框架按当前阶段自动执行——答题阶段=验收答题（②），出题阶段=校验出题并交棒（④），
-按钮文案随之切换。底栏常驻「判定结果」面板（总判定 PASS/FAIL + 历史/隐藏计数 + 一句结果
-说明），判定瞬间全屏定格 3 秒——**整屏绿色 PASS / 整屏红色 FAIL 大字**（录屏高潮镜头，
+顶栏与底栏占据更多画面（赛况横幅 / 判定结果常驻面板）。**人类只需一个 `NEXT`**：
+答题阶段运行全绿判定；出题材料导入后第一次运行全红判定；全红通过后页面停在第 ④ 格，
+等待录制者手动完成 OpenCode；再次 `NEXT` 才运行全绿并交棒。底栏常驻「判定结果」面板
+（总判定 PASS/FAIL + 历史/隐藏计数 + 一句结果
+说明），判定瞬间全屏定格 3 秒——**整屏绿色 PASS / 整屏红色 RED 或 FAIL**（录屏高潮镜头，
 点击可提前关闭）。所有操作按钮点击即执行，无二次确认弹窗。
 
 | 步骤 | 谁在做 | 发生什么 |
 | ---- | ---- | ---- |
 | ① 作答 | 当前选手 | 按需求改 arena_repo 业务代码，交付物落 `inbox/`（或人工上传） |
 | ② 判定 | 框架（人类点「推进」，答题阶段自动执行验收） | 应用 ① 的改动到 `src/`，跑历史+隐藏 pytest：全绿过；否则淘汰回滚 |
-| ③ 出题 | 当前选手 | 交下一棒需求 `next_prompt.md` + 本轮隐藏测试 `hidden_tests.py` |
-| ④ 自证 | 框架（人类点「推进」，出题阶段自动执行交棒） | 复制仓库 → 验题模型仅凭 ③ 的需求单次重实现 → 隐藏测试考它：全绿才交棒，否则出题者淘汰 |
+| ③ 出题 | 当前选手 + 框架 | 交下一棒需求与 3 条新测试；框架要求历史全绿、新测试全部 RED |
+| ④ 自证 | 录制者手动操作 + 框架判定 | 在独立目录手动启动全新的同模型 OpenCode（或真人编码）；完成后再按 `NEXT`，历史+新测试全部 GREEN 才交棒 |
 
 ```
 ① 作答 → ② 判定 → ③ 出题 → ④ 自证
@@ -142,7 +173,9 @@ Mimo 系），增删选手只需同步改 `order`、`survivors`、`players`、`s
         （下一位回到 ①）                   （下一位回到 ①；全绿则轮次+1 交棒）
 ```
 
-Web 操作区只有一个**「推进」**主按钮（框架按阶段自动决定验收答题还是校验出题）；材料上传在调试抽屉（`.zip`/多文件、需求 + 隐藏测试、首轮需求），另有「还原到最近备份」。当前提示词可在调试抽屉「当前需求」块一键复制，直接喂给选手 Agent。CLI `status` 同样显示当前步骤。
+Web 操作区只有一个 `NEXT` 主按钮，复用既有四阶段结构，不在页面内编排 Agent。全红通过后，
+现有结果消息显示自证目录；现有提示词区域切换为待自证的 `next_prompt.md`，可直接复制到
+手动打开的 OpenCode。CLI `status` 同样显示自证目录与提示词路径。
 
 ### 5.3 材料投递目录 inbox/（免手动上传，推荐）
 
@@ -152,7 +185,7 @@ Web 操作区只有一个**「推进」**主按钮（框架按阶段自动决定
 | 材料 | inbox/ 约定 | 触发方式 |
 | ---- | ---- | ---- |
 | 答题（业务代码改动） | `inbox/answer.zip` 或 `inbox/answer/` 目录 | 点「验收答题」（或 `judge-answer`），尚无已导入材料时自动拾取 |
-| 出题（下一棒需求 + 隐藏测试） | `inbox/next_prompt.md` + `inbox/hidden_tests.py` | 点「校验出题并交棒」（或 `judge-proposal`），同上 |
+| 出题（下一棒需求 + 隐藏测试） | `inbox/next_prompt.md` + `inbox/hidden_tests.py` | 点 `NEXT`（或第一次 `judge-proposal`）自动拾取并运行全红 |
 
 - 已消费的材料自动移入 `inbox/_consumed/<时间戳>/` 留档，不会被下一轮误拾取；
 - `config.json` 的 `inbox_dir` 可指向任意目录——**可直接配成你 Agent 的产物输出目录**，
@@ -169,7 +202,9 @@ python -m cli.bugrelay status                          # 查看轮次/存活/淘
 python -m cli.bugrelay load-answer <path>              # 导入答题文件（.zip / 目录 / 单文件）
 python -m cli.bugrelay judge-answer                    # 验收答题（inbox/ 有材料时自动拾取）
 python -m cli.bugrelay load-proposal <md> <py>         # 导入出题材料
-python -m cli.bugrelay judge-proposal                  # 校验出题并交棒（inbox/ 有材料时自动拾取）
+python -m cli.bugrelay judge-proposal                  # 第一次：全红并创建手动自证目录
+python -m cli.bugrelay status                          # 查看自证目录；手动在其中完成 OpenCode
+python -m cli.bugrelay judge-proposal                  # 第二次：全绿并交棒
 python -m cli.bugrelay restore                         # 还原最近备份
 python -m cli.bugrelay set-model FBL "Claude Fable 5.5" # 模型迭代：更新选手实际模型
 python -m cli.bugrelay draw                            # 顺序抽签：随机重排接力顺序并重置进度（每场开始时）
@@ -177,7 +212,7 @@ python -m cli.bugrelay inject-rules                    # 手动注入测试规�
 python -m cli.bugrelay web                             # 启动 Web
 ```
 
-> CLI 没有任何"自动跑选手"的命令；框架永远不会代替选手答题或出题。
+> CLI/Web 没有任何“自动跑 Agent”的能力；AI 与真人都是框架外的文件产出者。
 
 ## 6. Web API 一览
 
@@ -191,7 +226,7 @@ python -m cli.bugrelay web                             # 启动 Web
 | POST | `/api/answer` | 上传答题文件（.zip 或多文件/文件夹） |
 | POST | `/api/judge-answer` | 验收答题 |
 | POST | `/api/proposal` | 上传 next_prompt.md + hidden_tests.py |
-| POST | `/api/judge-proposal` | 校验出题并交棒 |
+| POST | `/api/judge-proposal` | 状态化推进：第一次全红并创建自证目录；第二次全绿并交棒 |
 | POST | `/api/restore` | 还原最近备份 |
 | POST | `/api/set-model` | 批量更新选手实际模型 `{"updates": {三字码: 新模型名}}`（模型迭代；arena 未就绪也可用） |
 | POST | `/api/draw` | 顺序抽签：随机重排全部选手接力顺序并重置比赛进度（保留选手表与首轮需求） |
@@ -206,20 +241,20 @@ python -m cli.bugrelay web                             # 启动 Web
 | ---- | ---- |
 | `arena_repo_path` | arena_repo 位置（默认 `../arena_repo`；支持绝对路径、`~`、相对本仓库的路径）。可被环境变量 `BUGRELAY_ARENA_REPO` 覆盖（优先级更高） |
 | `business_dir` / `history_tests_dir` | 业务目录（默认 `src`）与历史测试目录（默认 `tests`） |
-| `verifier_model` | OpenAI 兼容 `/chat/completions`：`base_url`/`model`/`api_key`/`timeout_seconds`。**单次调用、不重试、超时直接判 FAIL** |
 | `pytest_args` | 传给 pytest 的参数（默认 `["-q"]`，框架会追加 junitxml/legacy 等解析用参数） |
+| `proposal_test_count` | 每道新题必须包含且被 pytest 实际收集的测试条数（默认 3） |
 | `state_file` / `hidden_tests_dir` / `prompts_dir` / `backups_dir` | 框架自身目录布局 |
 | `inbox_dir` | 材料投递目录（默认 `inbox`，可指向 Agent 的产物输出目录，见 §5.3） |
-| `mock` | MOCK 演练模式开关（默认 `false`）。开启后判定结果随机模拟：不跑 pytest、不调验题模型、不读写 arena_repo、不需要材料，但状态推进（轮次/阶段/淘汰/积分/日志）与真实流程完全一致。可经 Web 顶栏「MOCK」按钮或 `POST /api/mock` 运行时切换（写回本文件） |
+| `mock` | MOCK 演练模式开关（默认 `false`）。开启后随机模拟答题全绿、出题全红和自证全绿，不跑 pytest、不读写 arena_repo、不需要材料；仍保留“全红后暂停、第二次推进全绿”的真实节奏 |
 
 ## 7.1 MOCK 演练模式（上真实流程前预演整场操作）
 
-用途：不接 arena_repo、不调验题模型，把"抽签 → 作答 → 判定 → 出题 → 自证 → 交棒/淘汰"整条操作链自己走一遍。
+用途：不接 arena_repo，把“抽签 → 作答判定 → 出题全红 → 手动自证暂停 → 自证全绿 → 交棒/淘汰”整条操作链走一遍。
 
 - **开启**：Web 顶栏「MOCK」按钮（confirm 后生效）或 `POST /api/mock {"enabled": true}`；
 - **判定随机**：每次点「验收答题 / 校验出题」随机出 PASS/FAIL（约 65% PASS），日志与返回值均带 `[MOCK]` 标记；
-- **状态推进与真实一致**：PASS 进入下一阶段、出题合法则轮次 +1 交棒；FAIL 淘汰当前选手并切换下一位；
-- **不碰任何真实资源**：不运行 pytest、不调用验题模型、不读写 arena_repo、不要求 inbox/ 上传材料（arena 未就绪也可演练）；
+- **状态推进与真实一致**：出题第一次推进模拟全红；通过后暂停等待手动自证，第二次推进才模拟全绿并交棒；
+- **不碰任何真实资源**：不运行 pytest、不读写 arena_repo、不要求 inbox/ 上传材料（arena 未就绪也可演练）；
 - **演练需求占位**：交棒后 `current_prompt_file` 为 `mock://round_N` 标记，需求面板显示占位文本；
 - **收尾**：演练完点「抽签」重置进度，再关 MOCK 回到真实评测（顶栏按钮 / `POST /api/mock {"enabled": false}` / 改 config.json 均可）。
 
@@ -233,8 +268,8 @@ harness_repo/
 ├── config.json
 ├── cli/bugrelay.py       # argparse CLI
 ├── core/
-│   ├── judge.py          # 裁判核心：pytest、备份、回滚、答题验收、出题验题（唯一调用模型处）
-│   ├── repo_ops.py       # arena_repo 复制、git 状态、还原、上传应用
+│   ├── judge.py          # 裁判核心：pytest、备份、回滚、全红/全绿与手动自证状态
+│   ├── repo_ops.py       # arena_repo 复制、测试内容清单、还原、上传应用
 │   └── utils.py          # 配置/状态/日志
 ├── templates/index.html  # 单页控制台
 ├── static/               # style.css + main.js
@@ -245,11 +280,13 @@ harness_repo/
 └── state/                # match.json + log.jsonl（最新在上）
 ```
 
-`tmp/`（验题临时目录、上传暂存）为运行时按需创建，不在仓库中预置。
+`tmp/` 为运行时目录：上传暂存、一次性 RED/GREEN 测试副本，以及全红通过后需要人工
+进入的 `manual_proof_*/repo`。后者会跨请求保留到全绿判定结束；不要把新隐藏测试手动
+复制进去。
 
 ## 9. 测试规范（出题契约）
 
-出题人（选手/验题模型/首轮人类）提交的 `hidden_tests.py` 必须满足以下规范。
+出题人（AI Agent 或真人）以及首轮人类提交的 `hidden_tests.py` 必须满足以下规范。
 
 **规范的注入**：arena_repo 接入框架（`arena_ready` 刷新为就绪）的那一刻，本规范会自动写入
 `arena_repo/TESTING_GUIDELINES.md`——选手 Agent 打开仓库即可看到（面向选手改写的版本，
@@ -258,7 +295,7 @@ harness_repo/
 `POST /api/inject-rules`（均幂等）。
 
 违反阻断级规则的文件在导入时（Web 上传 / CLI load-proposal / inbox 拾取）会被静态闸门
-拒绝，不会浪费验题的模型调用。**建议把本节原文（或注入的 TESTING_GUIDELINES.md）
+拒绝，不会创建自证目录。**建议把本节原文（或注入的 TESTING_GUIDELINES.md）
 直接粘进给出题选手的提示词**。
 
 ### 9.1 hidden_tests.py 写法（阻断级，机器校验）
@@ -266,10 +303,9 @@ harness_repo/
 1. **单文件自包含**：一个 `hidden_tests.py` 就是全部。禁止引用 `tests/` 内其他模块
    （`import tests...` / `from tests...`）、禁止相对导入（`from . / from ..`）——
    验题时它会被**单独拷贝**到临时仓库，任何外部依赖都会挂。
-2. **不依赖 fixture / conftest**：conftest 属于历史测试，锁定不可改，出题人不能假设
-   它存在。数据在测试函数体内自行构造。
-3. **必须有真测试**：每个 `test_*` 函数（pytest 函数式风格）都含 `assert` /
-   `pytest.raises` 断言（无断言只警告，但"永真测试"骗不过验题，也对不起接力）。
+2. **三个模块顶层普通函数**：禁止嵌套、测试类方法、async、参数化、fixture 参数、
+   `@pytest.fixture`、skip 和 xfail；每个 `test_*` 必须无参数，数据在函数体内构造。
+3. **必须有真测试**：每个 `test_*` 函数都含 `assert` 或 `pytest.raises`；缺失直接拒绝。
 4. **语法必须合法**（废话，但 AI 常翻车）。
 5. **一题一缺陷、三测同源**：每次出题只引入**一个**缺陷（需求变更）；
    `hidden_tests.py` 必须恰好包含 **3 个** `test_*` 函数（数量可经
@@ -326,7 +362,7 @@ def test_other_keys_unaffected():  # 回归防护：防特判糊弄
 
 出题思路：**用"构造数据 + 断言行为"代替"加载现成数据"**；三个用例从三个角度
 夹住**同一个**缺陷。边界值、空态、异常路径都是好题；纯正常路径的题太弱，
-验题模型一遍就能过。
+也无法形成清晰的“当前实现全红 → 独立自证全绿”。
 
 ### 9.5 框架执行规范（跑测试的机器行为）
 
@@ -336,11 +372,12 @@ def test_other_keys_unaffected():  # 回归防护：防特判糊弄
 | 工作目录 | 目标仓库根（arena 或临时验题仓库） |
 | 发现范围 | pytest 默认规则：`test_*.py` / `*_test.py`；`tests/` 不存在时当作 0 个历史测试 |
 | PYTHONPATH | 目标仓库根 → `from src...` 直接可用 |
-| 隐藏测试注入 | 验收/验题前拷贝到 `<repo>/tests/hidden_tests.py`，与历史测试同场运行 |
-| 全绿判定 | pytest exit_code == 0 **且** total > 0（exit 5"没收集到测试"不算绿） |
-| 计数 | junit XML 按文件分类：`hidden_tests.py` 的算隐藏，其余算历史；前端只见通过数/总数 |
+| 隐藏测试注入 | 只注入一次性测试副本；手动自证目录在 Agent 工作期间不含新测试 |
+| 全红判定 | 历史全绿；新测试恰好收集 N 条且全部 failure，passed/skipped/errors 均为 0 |
+| 全绿判定 | 历史全绿；新测试恰好收集 N 条且全部 passed，failed/skipped/errors 均为 0 |
+| 计数 | junit XML 严格区分 passed/failed/errors/skipped；前端只展示必要计数，不展示测试内容 |
 | 超时 | 全局 pytest 超时（`PYTEST_TIMEOUT_SECONDS`），超时直接判 FAIL |
-| 历史测试保护 | 应用答题前后 git 快照比对 `tests/`，有改动即判"篡改历史测试"并回滚 |
+| 历史测试保护 | 应用前、应用后、pytest 后比较 `tests/` 内容哈希；任一历史文件变化即回滚 |
 
 
 
@@ -349,8 +386,9 @@ def test_other_keys_unaffected():  # 回归防护：防特判糊弄
 - **arena_repo 不存在**：页面顶部与文件树区会提示"arena_repo 未就绪"；确认 `config.json`
   的 `arena_repo_path`（或环境变量 `BUGRELAY_ARENA_REPO`）指向已存在的独立 git 仓库后点「刷新」。路径非法（指向 harness 自身或其
   祖先/子目录）也会被判为未就绪，属安全防护。
-- **验题模型连不上**：`judge-proposal` 会按 `timeout_seconds` 超时直接判 FAIL（不重试）；
-  请确认 `base_url`（如 Ollama 需 `http://localhost:11434/v1`）与 `model` 名称。
+- **全红通过后怎么办**：页面停在第 ④ 格；结果消息和 `bugrelay status` 给出
+  `tmp/manual_proof_*/repo`。在该目录手动打开全新的同模型 OpenCode，复制页面现有提示词，
+  完成后再点 `NEXT`（或再次运行 `judge-proposal`）做全绿判定。
 - **pytest 路径问题**：框架在仓库根目录以 `python -m pytest` 运行并把仓库根加入
   `PYTHONPATH`；若历史测试仍找不到被测代码，检查 arena_repo 的测试导入方式与
   `pytest_args` 配置。
@@ -363,7 +401,10 @@ def test_other_keys_unaffected():  # 回归防护：防特判糊弄
 ## 11. 边界声明
 
 - 本框架仓库**不包含任何被评测的业务代码**，也不生成 demo 业务数据；
+- Harness 与 arena 必须是两个独立 Git 仓库；它们可以并排放在专用 Ubuntu 虚拟机中，
+  `BR-Code` 只是一次实战选择，不是 Harness 的组成部分；
+- 框架不调用 AI；AI Agent 或真人都由录制者手动操作，只向 Harness 交付文件；
 - 框架**不创建** arena_repo（由人类另建），只在人类触发评测时对既有仓库做
   受控的备份/应用/回滚；
 - 历史测试一经进入 arena_repo 的 `tests/` 即锁定：上传内容顶层 `tests/` 目录会被
-  整体拦截，git 快照对比发现改动立即回滚并判 FAIL。
+  整体拦截，内容哈希清单发现改动立即回滚并判 FAIL。

@@ -1,7 +1,8 @@
 """Bug Relay 裁判核心（规范【6】）。
 
 本模块是唯一会修改 arena_repo 的地方，且只在人类触发（Web 按钮 / CLI 命令）的瞬间工作：
-导入文件 -> 跑 pytest -> 记录结果 -> 备份/回滚。框架不启动、不观测任何选手 Agent。
+导入文件 -> 跑 pytest -> 记录结果 -> 备份/回滚。框架不启动、不调用、不观测任何
+AI Agent；AI 或真人都只是在框架外产出文件。
 
 主要函数：
 - run_pytest(repo_path, extra_test_file=None, hidden_name=None):
@@ -11,16 +12,16 @@
 - backup_arena(tag): 把 arena 当前完整状态复制到 backups/，登记 index.json，返回备份 id。
 - restore_arena(): 从最近一次备份还原（无备份时用 git checkout+clean 兜底，保留 tests/）。
 - apply_business_files(upload_path): 见 repo_ops.apply_upload_to_business（严格排除 tests/）。
-- verify_answer(): 答题验收（不调用任何模型）。
-- verify_proposal(): 出题验题（唯一调用 verifier_model 的地方，且只调用一次）。
-
-模型调用约定（规范【8】）：验题模型严格按 "=== FILE: 相对路径 ===" 文件块输出，
-解析失败（没有任何 FILE 块）直接判 FAIL，不重试。
+- verify_answer(): 答题验收，要求历史测试 + 本轮隐藏测试全部 GREEN。
+- verify_proposal(): 两次推进的手动自证状态机：第一次要求新测试全部 RED 并创建
+  独立工作区；人类在该目录手动运行同模型 OpenCode（或真人编码）后，第二次要求
+  历史测试 + 新测试全部 GREEN。自证代码只用于证明题目可解，不进入正式 arena。
 """
 
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import random
@@ -42,30 +43,12 @@ from .utils import (
     log_event, now_iso, resolve_path, save_state,
 )
 
-# 全局裁判锁：防止 Web 双击 / CLI 并发导致两次评测同时改 arena
-VERIFY_LOCK = threading.Lock()
+# 全局裁判锁：防止 Web 双击 / CLI 并发导致两次评测同时改 arena。
+# 使用 RLock，给内部失败收尾/恢复路径保留可重入空间。
+VERIFY_LOCK = threading.RLock()
 
 # pytest 单次运行的保护超时（防止测试死循环卡死框架）
 PYTEST_TIMEOUT_SECONDS = 1800
-
-# 验题模型系统提示（规范【8】：只要文件块，不要解释）
-VERIFIER_SYSTEM_PROMPT = """你是一名资深 Python 程序员，正在参加编程接力赛的验题环节。
-用户消息是一份需求文档（next_prompt.md）。你的任务：仅凭这份需求文档，在已有 Python 项目中实现所需功能（可以新增或修改任意业务代码文件）。
-
-你必须严格按以下格式输出，每个文件一个块，除此之外不要输出任何解释、前言、结语或 Markdown 代码围栏：
-=== FILE: 相对路径 ===
-（该文件的完整内容）
-=== FILE: 另一个相对路径 ===
-（该文件的完整内容）
-
-规则：
-1. 只输出需要新增或修改的文件；路径是相对项目根目录的路径（业务代码通常位于 src/ 下）。
-2. 禁止输出或修改 tests/ 目录下的任何文件。
-3. 不要输出任何其他文字。"""
-
-# 文件块头部："=== FILE: <相对路径> ==="
-_FILE_HEADER_RE = re.compile(r"===\s*FILE:\s*(.+?)\s*===")
-
 
 # ---------------------------------------------------------------------------
 # 基础：state 帮助函数
@@ -110,13 +93,19 @@ def _advance(state: Dict, eliminate_current: bool) -> bool:
     return False
 
 
-def _summary_counts(res: Dict) -> Dict:
+def _summary_counts(res: Dict, overall: Optional[str] = None) -> Dict:
     """把 run_pytest 结果压成前端可展示的两行计数（不含任何测试内容）。"""
     def pack(part: Dict) -> Dict:
-        return {"passed": part.get("passed", 0), "total": part.get("total", 0),
-                "ok": bool(part.get("total", 0) > 0 and part.get("passed", 0) >= part.get("total", 0))}
+        passed = int(part.get("passed", 0) or 0)
+        total = int(part.get("total", 0) or 0)
+        failed = int(part.get("failed", 0) or 0)
+        errors = int(part.get("errors", 0) or 0)
+        skipped = int(part.get("skipped", 0) or 0)
+        return {"passed": passed, "total": total, "failed": failed,
+                "errors": errors, "skipped": skipped,
+                "ok": bool(total > 0 and passed == total and failed == errors == skipped == 0)}
     return {"history": pack(res.get("history", {})), "hidden": pack(res.get("hidden", {})),
-            "overall": "PASS" if res.get("ok") else "FAIL"}
+            "overall": overall or ("PASS" if res.get("ok") else "FAIL")}
 
 
 # ---------------------------------------------------------------------------
@@ -127,14 +116,15 @@ def _parse_junit(xml_path: str, hidden_name: Optional[str]) -> Optional[Dict]:
     """解析 pytest junit xml，按文件归出 history / hidden 两份计数。
 
     使用 junit_family=legacy（testcase 带 file 属性）。解析失败返回 None（走 fallback）。
-    计数口径：passed = 通过+跳过（与 pytest 退出码 0 语义对齐），total = 全部用例。
+    计数口径严格区分 passed / failed / errors / skipped。Bug Relay 的 RED/GREEN
+    闸门不把 skipped 当作通过，也不把 collection/import error 当作有效 RED。
     """
     try:
         root = ET.parse(xml_path).getroot()
     except Exception:
         return None
-    hist = {"passed": 0, "failed": 0, "errors": 0, "total": 0}
-    hid = {"passed": 0, "failed": 0, "errors": 0, "total": 0}
+    hist = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "total": 0}
+    hid = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "total": 0}
     for tc in root.iter("testcase"):
         f = (tc.get("file") or "").replace("\\", "/")
         is_hidden = bool(hidden_name) and (os.path.basename(f) == hidden_name or f.endswith("/" + (hidden_name or "\x00")))
@@ -144,28 +134,32 @@ def _parse_junit(xml_path: str, hidden_name: Optional[str]) -> Optional[Dict]:
             bucket["failed"] += 1
         elif tc.find("error") is not None:
             bucket["errors"] += 1
-        else:  # passed / skipped 均计为通过（skipped 不视为失败）
+        elif tc.find("skipped") is not None:
+            bucket["skipped"] += 1
+        else:
             bucket["passed"] += 1
-    for b in (hist, hid):
-        b["passed"] = b["total"] - b["failed"] - b["errors"]
     return {"history": hist, "hidden": hid}
 
 
 def _parse_summary_fallback(stdout: str, hidden_name: Optional[str]) -> Dict:
     """从 -q 输出末行解析计数（junit xml 不可用时的兜底，无法分离 history/hidden）。"""
-    passed = failed = errors = 0
-    for m in re.finditer(r"(\d+)\s+(passed|failed|error|errors)", stdout):
+    passed = failed = errors = skipped = 0
+    for m in re.finditer(r"(\d+)\s+(passed|failed|error|errors|skipped)", stdout):
         n, kind = int(m.group(1)), m.group(2)
         if kind == "passed":
             passed = n
         elif kind == "failed":
             failed = n
+        elif kind == "skipped":
+            skipped = n
         else:
             errors = n
-    total = passed + failed + errors
-    hist = {"passed": 0 if hidden_name else passed, "failed": 0, "errors": 0, "total": 0 if hidden_name else total}
-    hid = {"passed": passed, "failed": failed, "errors": errors, "total": total} if hidden_name \
-        else {"passed": 0, "failed": 0, "errors": 0, "total": 0}
+    total = passed + failed + errors + skipped
+    empty = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "total": 0}
+    hist = dict(empty) if hidden_name else {
+        "passed": passed, "failed": failed, "errors": errors, "skipped": skipped, "total": total}
+    hid = {"passed": passed, "failed": failed, "errors": errors,
+           "skipped": skipped, "total": total} if hidden_name else dict(empty)
     return {"history": hist, "hidden": hid}
 
 
@@ -189,8 +183,10 @@ def run_pytest(repo_path: str | Path, extra_test_file: Optional[str | Path] = No
         if not src.exists():
             return {"exit_code": -1, "passed": 0, "total": 0, "ok": False,
                     "log_text": "extra_test_file 不存在: %s" % src,
-                    "history": {"passed": 0, "total": 0}, "hidden": {"passed": 0, "total": 0},
-                    "hidden_dest": None, "error": "本轮隐藏测试文件缺失"}
+                    "history": {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "total": 0},
+                    "hidden": {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "total": 0},
+                    "hidden_dest": None, "stats_reliable": False,
+                    "error": "本轮隐藏测试文件缺失"}
         tests_dir.mkdir(parents=True, exist_ok=True)
         hidden_dest = tests_dir / (hidden_name or src.name)
         shutil.copy2(src, hidden_dest)
@@ -202,6 +198,7 @@ def run_pytest(repo_path: str | Path, extra_test_file: Optional[str | Path] = No
            "--tb=short", "-p", "no:cacheprovider"]
     env = dict(os.environ)
     env["PYTHONUNBUFFERED"] = "1"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     # 帮助 "from src import ..." 风格的测试能直接跑（不改 arena 任何文件）
     env["PYTHONPATH"] = os.pathsep.join([str(repo)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
 
@@ -221,7 +218,8 @@ def run_pytest(repo_path: str | Path, extra_test_file: Optional[str | Path] = No
 
     hname = hidden_dest.name if hidden_dest else None
     stats = _parse_junit(xml_path, hname)
-    if stats is None:
+    stats_reliable = stats is not None
+    if not stats_reliable:
         stats = _parse_summary_fallback(log_text, hname)
     try:
         os.unlink(xml_path)
@@ -239,10 +237,146 @@ def run_pytest(repo_path: str | Path, extra_test_file: Optional[str | Path] = No
         "total": total,
         "ok": ok,
         "log_text": log_text,
-        "history": {"passed": stats["history"]["passed"], "total": stats["history"]["total"]},
-        "hidden": {"passed": stats["hidden"]["passed"], "total": stats["hidden"]["total"]},
+        "history": dict(stats["history"]),
+        "hidden": dict(stats["hidden"]),
         "hidden_dest": str(hidden_dest) if hidden_dest else None,
+        "stats_reliable": stats_reliable,
     }
+
+
+def _proposal_test_count(cfg: Optional[Dict] = None) -> int:
+    cfg = cfg or load_config()
+    try:
+        count = int(cfg.get("proposal_test_count", 3))
+    except (TypeError, ValueError):
+        count = 3
+    return max(count, 1)
+
+
+def _part_is_green(part: Dict, allow_empty: bool = True) -> bool:
+    total = int(part.get("total", 0) or 0)
+    if not allow_empty and total == 0:
+        return False
+    return (
+        int(part.get("passed", 0) or 0) == total
+        and int(part.get("failed", 0) or 0) == 0
+        and int(part.get("errors", 0) or 0) == 0
+        and int(part.get("skipped", 0) or 0) == 0
+    )
+
+
+def _validate_all_green(res: Dict, expected_hidden: int) -> Tuple[bool, str]:
+    """严格 GREEN：历史无失败/错误/跳过；隐藏恰好 N 条且全部真实通过。"""
+    if not res.get("stats_reliable"):
+        return False, "JUnit 结果不可用，无法可靠区分历史与隐藏测试"
+    history = res.get("history", {})
+    hidden = res.get("hidden", {})
+    if not _part_is_green(history, allow_empty=True):
+        return False, "历史测试未全绿（通过 %s/%s，失败 %s，错误 %s，跳过 %s）" % (
+            history.get("passed", 0), history.get("total", 0), history.get("failed", 0),
+            history.get("errors", 0), history.get("skipped", 0))
+    if int(hidden.get("total", 0) or 0) != expected_hidden:
+        return False, "本轮测试必须实际收集 %d 条（当前 %s 条）" % (
+            expected_hidden, hidden.get("total", 0))
+    if not _part_is_green(hidden, allow_empty=False) or res.get("exit_code") != 0:
+        return False, "本轮测试未全绿（通过 %s/%s，失败 %s，错误 %s，跳过 %s）" % (
+            hidden.get("passed", 0), hidden.get("total", 0), hidden.get("failed", 0),
+            hidden.get("errors", 0), hidden.get("skipped", 0))
+    return True, ""
+
+
+def _validate_all_red(res: Dict, expected_hidden: int) -> Tuple[bool, str]:
+    """严格 RED：历史仍全绿；隐藏恰好 N 条且每条都是断言失败。"""
+    if not res.get("stats_reliable"):
+        return False, "JUnit 结果不可用，无法可靠区分历史与新测试"
+    history = res.get("history", {})
+    hidden = res.get("hidden", {})
+    if not _part_is_green(history, allow_empty=True):
+        return False, "历史测试必须保持全绿（通过 %s/%s，失败 %s，错误 %s，跳过 %s）" % (
+            history.get("passed", 0), history.get("total", 0), history.get("failed", 0),
+            history.get("errors", 0), history.get("skipped", 0))
+    if int(hidden.get("total", 0) or 0) != expected_hidden:
+        return False, "新测试必须实际收集 %d 条（当前 %s 条）" % (
+            expected_hidden, hidden.get("total", 0))
+    if not (
+        int(hidden.get("failed", 0) or 0) == expected_hidden
+        and int(hidden.get("passed", 0) or 0) == 0
+        and int(hidden.get("errors", 0) or 0) == 0
+        and int(hidden.get("skipped", 0) or 0) == 0
+        and res.get("exit_code") == 1
+    ):
+        return False, "新测试必须全部 RED（通过 %s，失败 %s/%s，错误 %s，跳过 %s）" % (
+            hidden.get("passed", 0), hidden.get("failed", 0), hidden.get("total", 0),
+            hidden.get("errors", 0), hidden.get("skipped", 0))
+    return True, ""
+
+
+_MANIFEST_IGNORE_NAMES = {".git", "__pycache__", ".pytest_cache", ".DS_Store"}
+_MANIFEST_IGNORE_SUFFIXES = {".pyc", ".pyo"}
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _is_under_business(rel: Path, business_dir: str) -> bool:
+    biz_parts = tuple(p for p in Path(business_dir).parts if p not in ("", "."))
+    if not biz_parts:
+        return True
+    return tuple(rel.parts[:len(biz_parts)]) == biz_parts
+
+
+def _locked_manifest(repo: Path, business_dir: str) -> Dict[str, str]:
+    """记录自证仓库中业务目录以外的内容，防止手动 Agent 改测试/配置。"""
+    manifest: Dict[str, str] = {}
+    for path in sorted(repo.rglob("*"), key=lambda p: p.as_posix()):
+        rel = path.relative_to(repo)
+        if _is_under_business(rel, business_dir):
+            continue
+        if any(part in _MANIFEST_IGNORE_NAMES for part in rel.parts):
+            continue
+        if path.suffix in _MANIFEST_IGNORE_SUFFIXES:
+            continue
+        key = rel.as_posix()
+        if path.is_symlink():
+            manifest[key] = "link:" + os.readlink(path)
+        elif path.is_dir():
+            manifest[key] = "dir"
+        elif path.is_file():
+            manifest[key] = "file:" + _sha256_file(path)
+    return manifest
+
+
+def _write_manifest(path: Path, manifest: Dict[str, str]) -> None:
+    path.write_text(json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
+
+
+def _read_manifest(path: Path) -> Dict[str, str]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("自证锁定清单格式错误")
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def _proof_root_is_safe(path: Path) -> bool:
+    try:
+        root = (BASE_DIR / "tmp").resolve()
+        resolved = path.resolve()
+        return resolved != root and str(resolved).startswith(str(root) + os.sep)
+    except Exception:
+        return False
+
+
+def _cleanup_proof(proof: Optional[Dict]) -> None:
+    if not isinstance(proof, dict) or not proof.get("root"):
+        return
+    root = Path(str(proof["root"]))
+    if _proof_root_is_safe(root):
+        shutil.rmtree(root, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -292,11 +426,20 @@ def backup_arena(tag: str) -> Optional[str]:
              "commit": repo_ops.current_commit(arena), "path": str(dst)}
     index = _load_backup_index()
     index.append(entry)
+    index_path = _backup_index_path()
+    index_tmp = index_path.with_suffix(index_path.suffix + ".tmp")
     try:
-        with open(_backup_index_path(), "w", encoding="utf-8") as f:
+        with open(index_tmp, "w", encoding="utf-8") as f:
             json.dump({"backups": index}, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+        os.replace(index_tmp, index_path)
+    except Exception as e:
+        try:
+            index_tmp.unlink()
+        except Exception:
+            pass
+        shutil.rmtree(dst, ignore_errors=True)
+        log_event("backup", "备份索引写入失败，已撤销未登记备份: %s" % e, result="WARN")
+        return None
     log_event("backup", "已备份 arena_repo -> backups/%s (tag=%s)" % (bid, tag))
     return bid
 
@@ -309,7 +452,20 @@ def latest_backup() -> Optional[Dict]:
     return None
 
 
-def restore_arena() -> Dict:
+def _discard_pending_proof(message: Optional[str] = None) -> bool:
+    state = load_state()
+    proof = state.get("pending_proof")
+    if not proof:
+        return False
+    _cleanup_proof(proof)
+    state["pending_proof"] = None
+    if message:
+        _set_msg(state, message)
+    save_state(state)
+    return True
+
+
+def _restore_arena_unlocked() -> Dict:
     """从 backups/ 最近一次备份还原 arena_repo（规范【6】）。
 
     - 有备份：清空 arena 当前内容（含未跟踪临时文件），再完整复制备份回去
@@ -333,8 +489,11 @@ def restore_arena() -> Dict:
         try:
             repo_ops.clean_dir_contents(arena)
             shutil.copytree(Path(entry["path"]), arena, dirs_exist_ok=True)
+            cancelled = _discard_pending_proof("arena 已还原；原手动自证目录已取消，请重新运行全红")
             log_event("restore", "已从备份 %s 还原 arena_repo" % entry["id"])
-            return {"ok": True, "backup_id": entry["id"], "message": "已还原到备份 %s" % entry["id"]}
+            suffix = "；已取消待处理的手动自证" if cancelled else ""
+            return {"ok": True, "backup_id": entry["id"],
+                    "message": "已还原到备份 %s%s" % (entry["id"], suffix)}
         except Exception as e:
             log_event("restore", "从备份还原失败: %s" % e, result="WARN")
             return {"ok": False, "error": "还原失败: %s" % e}
@@ -344,10 +503,19 @@ def restore_arena() -> Dict:
     try:
         repo_ops.git(arena, "checkout", "--", ".")
         repo_ops.git(arena, "clean", "-fdx", "-e", tdir + "/", "-e", tdir)
+        cancelled = _discard_pending_proof("arena 已还原；原手动自证目录已取消，请重新运行全红")
         log_event("restore", "无备份，已用 git 还原（保留 %s/ 下未跟踪文件）" % tdir)
-        return {"ok": True, "backup_id": None, "message": "无备份，已用 git 还原（保留 %s/）" % tdir}
+        suffix = "；已取消待处理的手动自证" if cancelled else ""
+        return {"ok": True, "backup_id": None,
+                "message": "无备份，已用 git 还原（保留 %s/）%s" % (tdir, suffix)}
     except Exception as e:
         return {"ok": False, "error": "git 还原失败: %s" % e}
+
+
+def restore_arena() -> Dict:
+    """串行执行 arena 还原；若正在等待手动自证，同时取消该过期工作区。"""
+    with VERIFY_LOCK:
+        return _restore_arena_unlocked()
 
 
 def apply_business_files(upload_path: str | Path) -> Dict:
@@ -364,6 +532,12 @@ def import_answer(path_str: str) -> Dict:
 
     接受 .zip 文件、目录、或单个业务文件；统一登记到 state.pending_answer。
     """
+    state = load_state()
+    if state.get("phase") != "answering":
+        return {"ok": False, "error": "当前不是答题阶段（phase=%s）" % state.get("phase")}
+    if state.get("pending_proof"):
+        return {"ok": False, "error": "正在等待手动自证，不能导入答题材料"}
+
     p = Path(path_str)
     if not p.exists():
         return {"ok": False, "error": "路径不存在: %s" % p}
@@ -392,18 +566,16 @@ def import_answer(path_str: str) -> Dict:
 def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) -> Dict:
     """隐藏测试静态闸门（出题规范【README「测试规范」/ arena_repo TESTING_GUIDELINES.md】的机器校验）。
 
-    阻断级（任一命中即拒绝导入，不进入验题——省模型调用）：
+    阻断级（任一命中即拒绝导入，不进入全红/手动自证）：
     1. 语法错误（ast 解析失败）；
-    2. 没有任何 test_* 测试函数/类（pytest 收集不到，全绿判定 total=0 必 FAIL）；
+    2. 不是恰好 required_count 个模块顶层、无参数的普通 test_* 函数；
     3. 依赖 tests/ 内其他模块：import tests / from tests ...；
     4. 相对导入（from . / from ..）：验题时单文件拷贝到临时仓库，相对导入必挂；
-    5. 依赖 conftest fixture：调用无默认值的 @pytest.fixture 函数
-       （conftest 属于历史测试，锁定不可改，出题人不能假设它存在）；
+    5. fixture、参数化、skip/xfail、嵌套/类/async 测试或缺少真断言；
     6. 测试数量不符「一题一缺陷、三测同源」：必须恰好 required_count 个 test_*
        函数（config.proposal_test_count，默认 3），全部针对同一缺陷。
 
     警告级（只写日志提示，不阻断）：
-    - test_* 函数体内没有任何 assert / pytest.raises / pytest.warns —— 可能没做真断言；
     - 测试引用了多个业务模块（src/...）—— 疑似一道题里测了多个不相关问题
       （"同一问题"无法静态确证，仅启发式提示）。
     """
@@ -429,16 +601,28 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
 
     fixture_names: set = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for dec in node.decorator_list:
                 d = ast.unparse(dec) if hasattr(ast, "unparse") else ""
                 if "fixture" in d:
                     fixture_names.add(node.name)
+                    errors.append("禁止定义 @pytest.fixture：隐藏测试必须在 test_* 内自行构造数据")
 
-    test_count = 0
+    top_tests = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")
+    ]
+    all_tests = [
+        node for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")
+    ]
+    if len(all_tests) != len(top_tests):
+        errors.append("所有 test_* 必须是模块顶层普通函数；禁止嵌套测试、测试类方法或 async 测试")
+
+    test_count = len(top_tests)
     business_modules: set = set()
     for node in ast.walk(tree):
-        # 规则 3/4：import 检查（顺带收集业务模块引用，供"三测同源"启发式）
+        # import 检查（顺带收集业务模块引用，供"三测同源"启发式）
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "tests" or alias.name.startswith("tests."):
@@ -453,29 +637,35 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
                 errors.append("禁止依赖 tests/ 历史测试模块: from %s import ..." % mod)
             if mod == business_dir or mod.startswith(business_dir + "."):
                 business_modules.add(mod)
-        # 规则 2：收集测试函数
-        elif isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
-            test_count += 1
-            # 警告级：无断言
-            has_assert = any(
-                isinstance(k, (ast.Assert,)) or
-                (isinstance(k, ast.Call) and isinstance(k.func, ast.Attribute)
-                 and isinstance(k.func.value, ast.Name) and k.func.value.id == "pytest"
-                 and k.func.attr in ("raises", "warns"))
-                for k in ast.walk(node))
-            if not has_assert:
-                warnings.append("%s 内未见 assert/pytest.raises，请确认有真断言" % node.name)
-            # 规则 5：fixture 依赖（参数注入是 pytest 的真实通道；conftest/fixture
-            # 属历史测试锁定不可改，出题测试必须自包含）
-            for arg in list(node.args.posonlyargs) + list(node.args.args):
-                if arg.arg in fixture_names and arg.arg not in ("self", "cls"):
-                    errors.append("%s 依赖 fixture %s（fixture/conftest 属历史测试锁定不可改，"
-                                  "出题测试必须自包含，请在函数内构造数据）" % (node.name, arg.arg))
-            for k in ast.walk(node):
-                if isinstance(k, ast.Call) and isinstance(k.func, ast.Name) \
-                        and k.func.id in fixture_names:
-                    errors.append("%s 依赖 fixture %s()（同上，出题测试必须自包含）"
-                                  % (node.name, k.func.id))
+
+    for node in top_tests:
+        has_assert = any(
+            isinstance(k, ast.Assert) or
+            (isinstance(k, ast.Call) and isinstance(k.func, ast.Attribute)
+             and isinstance(k.func.value, ast.Name) and k.func.value.id == "pytest"
+             and k.func.attr == "raises")
+            for k in ast.walk(node))
+        if not has_assert:
+            errors.append("%s 内必须包含 assert 或 pytest.raises 真断言" % node.name)
+
+        args = list(node.args.posonlyargs) + list(node.args.args) + list(node.args.kwonlyargs)
+        if args or node.args.vararg is not None or node.args.kwarg is not None:
+            errors.append("%s 禁止使用 fixture/参数注入；测试函数必须无参数" % node.name)
+
+        for dec in node.decorator_list:
+            d = ast.unparse(dec) if hasattr(ast, "unparse") else ""
+            if "parametrize" in d:
+                errors.append("%s 禁止参数化；三个顶层函数必须对应三条实际测试" % node.name)
+            if any(mark in d for mark in ("skip", "xfail")):
+                errors.append("%s 禁止 skip/skipif/xfail；测试必须真实 RED/GREEN" % node.name)
+
+        for k in ast.walk(node):
+            if isinstance(k, ast.Call) and isinstance(k.func, ast.Attribute):
+                owner = k.func.value.id if isinstance(k.func.value, ast.Name) else ""
+                if owner == "pytest" and k.func.attr in ("skip", "importorskip", "xfail"):
+                    errors.append("%s 禁止调用 pytest.%s()" % (node.name, k.func.attr))
+            if isinstance(k, ast.Call) and isinstance(k.func, ast.Name) and k.func.id in fixture_names:
+                errors.append("%s 禁止调用 fixture %s()" % (node.name, k.func.id))
     if test_count == 0:
         errors.append("文件中没有任何 test_* 函数（pytest 收集不到测试，全绿判定必 FAIL）")
     elif test_count != required_count:
@@ -497,6 +687,13 @@ def read_current_prompt() -> Dict:
     """
     cfg = load_config()
     state = load_state()
+    proof = state.get("pending_proof") or {}
+    if proof.get("stage") == "awaiting_manual_proof" and proof.get("prompt"):
+        prompt_path = Path(str(proof["prompt"]))
+        if prompt_path.is_file():
+            return {"ok": True, "name": "next_prompt.md（手动自证）",
+                    "content": prompt_path.read_text(encoding="utf-8"),
+                    "message": ""}
     name = state.get("current_prompt_file")
     if not name:
         return {"ok": True, "name": None, "content": None, "message": "等待首轮需求"}
@@ -550,8 +747,14 @@ def set_initial_prompt(prompt_file: str) -> Dict:
 def import_proposal(prompt_file: str, test_file: str) -> Dict:
     """导入出题材料（等同 POST /api/proposal）：next_prompt.md + hidden_tests.py。
 
-    先过 lint_hidden_test 静态闸门（出题规范），不合规直接拒绝导入
-    （不进入验题流程，避免浪费单次模型调用）。"""
+    先过 lint_hidden_test 静态闸门（出题规范），不合规直接拒绝导入；合规后
+    第一次推进运行全红，第二次推进运行手动自证后的全绿。"""
+    state = load_state()
+    if state.get("phase") != "proposing":
+        return {"ok": False, "error": "当前不是出题阶段（phase=%s）" % state.get("phase")}
+    if (state.get("pending_proof") or {}).get("stage") == "awaiting_manual_proof":
+        return {"ok": False, "error": "全红已通过，正在等待手动自证；不能替换本轮出题材料"}
+
     pf, tf = Path(prompt_file), Path(test_file)
     if not pf.exists() or not tf.exists():
         return {"ok": False, "error": "需求文档或隐藏测试文件不存在"}
@@ -581,12 +784,12 @@ def import_proposal(prompt_file: str, test_file: str) -> Dict:
     state = load_state()
     state["pending_proposal"] = {"prompt": str(stage / "next_prompt.md"),
                                  "test": str(stage / "hidden_tests.py")}
-    _set_msg(state, "已导入出题材料（等待「校验出题并交棒」）")
+    _set_msg(state, "已导入出题材料，等待全红判定")
     save_state(state)
     log_event("import-proposal", "导入出题材料（需求文档 + 隐藏测试）",
               player=state.get("current_player"), round_=state.get("round"))
     return {"ok": True, "pending": state["pending_proposal"],
-            "message": "已导入出题材料（需求 + 隐藏测试），等待校验"
+            "message": "已导入出题材料（需求 + 隐藏测试），等待全红判定"
                        + ("（警告：%s）" % "；".join(lint["warnings"]) if lint["warnings"] else "")}
 
 
@@ -672,7 +875,7 @@ def pickup_proposal() -> Dict:
 #
 # 用途：人类上真实流程前先走一遍完整操作。每次判定随机出 PASS/FAIL，
 # 状态推进（phase/round/淘汰/积分/日志）与真实流程完全一致，但：
-# - 不运行 pytest；不调用验题模型；不读写 arena_repo；不需要任何材料。
+# - 不运行 pytest；不读写 arena_repo；不需要任何材料。
 # 日志与返回值均带 MOCK 标记，避免与真实结果混淆。
 # ---------------------------------------------------------------------------
 
@@ -754,8 +957,8 @@ def _mock_verify_answer() -> Dict:
 
 
 def _mock_verify_proposal() -> Dict:
-    """MOCK 演练版出题验题：随机判定，状态推进与真实流程一致（不调模型）。"""
-    time.sleep(1.0)  # 模拟真实验题的运行延迟（约 1 秒），让录屏有"在跑"的观感
+    """MOCK 演练版手动自证：第一次模拟全红，第二次模拟全绿。"""
+    time.sleep(1.0)
     with VERIFY_LOCK:
         state = load_state()
         if state.get("status") == "finished":
@@ -765,6 +968,52 @@ def _mock_verify_proposal() -> Dict:
                     "reason": "当前选手尚未通过答题验收（phase=%s）" % state.get("phase")}
         player = state.get("current_player")
         rnd = state.get("round", 1)
+        proof = state.get("pending_proof") or {}
+
+        # 第一次推进：模拟新测试全红，成功后持久化等待人工自证。
+        if proof.get("stage") != "awaiting_manual_proof":
+            result = "PASS" if random.random() < MOCK_PROPOSAL_PASS_RATE else "FAIL"
+            hidden_total = _proposal_test_count()
+            history_total = random.randint(5, 40)
+            counts = {
+                "history": {"passed": history_total, "total": history_total, "ok": True},
+                "hidden": {"passed": 0, "total": hidden_total, "ok": False},
+                "overall": result,
+            }
+            state2 = load_state()
+            state2["last_result"] = result
+            state2["last_test_summary"] = counts
+            if result == "PASS":
+                state2["pending_proof"] = {
+                    "stage": "awaiting_manual_proof", "mock": True,
+                    "repo": "mock://manual-proof/round-%s/%s" % (rnd, player),
+                    "prompt": "mock://next_prompt.md", "player": player, "round": rnd,
+                }
+                _set_msg(state2, "[MOCK] 新测试全红通过；请手动演练自证，完成后再次点击 NEXT")
+                message = "[MOCK] 全红通过，等待手动自证；完成后再次点击 NEXT"
+                save_state(state2)
+                log_event("proposal-red", "MOCK 演练：新测试全部 RED，进入手动自证等待",
+                          result="PASS", player=player, round_=rnd)
+                return {"ok": True, "result": "PASS", "gate": "RED", "mock": True,
+                        "player": player, "round": rnd, "eliminated": False,
+                        "history": counts["history"], "hidden": counts["hidden"],
+                        "proof_repo": state2["pending_proof"]["repo"], "message": message}
+
+            _advance(state2, eliminate_current=True)
+            state2["phase"] = "answering"
+            state2["pending_proposal"] = None
+            state2["pending_proof"] = None
+            _set_msg(state2, "[MOCK] 新测试未全部 RED，出题失败并切换")
+            save_state(state2)
+            log_event("proposal-red", "MOCK 演练：全红判定 FAIL",
+                      result="FAIL", player=player, round_=rnd)
+            return {"ok": True, "result": "FAIL", "gate": "RED", "mock": True,
+                    "player": player, "round": rnd, "eliminated": True,
+                    "history": counts["history"], "hidden": counts["hidden"],
+                    "next_player": state2.get("current_player"),
+                    "message": "[MOCK] 新测试未全部 RED，已淘汰并切换"}
+
+        # 第二次推进：人类完成手动自证后，模拟最终全绿。
         result = "PASS" if random.random() < MOCK_PROPOSAL_PASS_RATE else "FAIL"
         counts = _mock_counts(result)
 
@@ -772,6 +1021,7 @@ def _mock_verify_proposal() -> Dict:
         state2["last_result"] = result
         state2["last_test_summary"] = counts
         state2["pending_proposal"] = None
+        state2["pending_proof"] = None
         if result == "PASS":
             new_round = rnd + 1
             state2["current_prompt_file"] = "%sround_%d" % (MOCK_PROMPT_PREFIX, new_round)
@@ -780,20 +1030,20 @@ def _mock_verify_proposal() -> Dict:
             state2["phase"] = "answering"
             state2["scores"] = dict(state2.get("scores", {}))
             state2["scores"][player] = state2["scores"].get(player, 0) + 1
-            _set_msg(state2, "[MOCK] 选手 %s 出题合法，已交棒（第 %d 轮）" % (player, new_round))
+            _set_msg(state2, "[MOCK] 手动自证全绿，选手 %s 出题合法，已交棒（第 %d 轮）" % (player, new_round))
             message = "[MOCK] 出题合法，已交棒：第 %d 轮，当前选手 %s" % (
                 new_round, state2.get("current_player"))
         else:
             _advance(state2, eliminate_current=True)
             state2["phase"] = "answering"
-            _set_msg(state2, "[MOCK] 选手 %s 出题 FAIL，已淘汰并切换" % player)
+            _set_msg(state2, "[MOCK] 手动自证未全绿，选手 %s 已淘汰并切换" % player)
             message = "[MOCK] 选手 %s 出题失败，已切换到 %s" % (player, state2.get("current_player"))
         save_state(state2)
-        log_event("judge-proposal",
-                  "MOCK 演练：选手 %s 出题 %s（随机模拟，未调用验题模型、未读写 arena_repo）" % (player, result),
+        log_event("proposal-green",
+                  "MOCK 演练：手动自证全绿判定 %s（未运行 pytest、未读写 arena_repo）" % result,
                   result=result, player=player, round_=rnd)
         return {"ok": True, "result": result, "player": player, "round": rnd,
-                "mock": True, "eliminated": result == "FAIL",
+                "gate": "GREEN", "mock": True, "eliminated": result == "FAIL",
                 "new_round": state2.get("round"),
                 "history": counts["history"], "hidden": counts["hidden"],
                 "next_player": state2.get("current_player"),
@@ -807,10 +1057,10 @@ def _mock_verify_proposal() -> Dict:
 def verify_answer() -> Dict:
     """验收当前选手的答题（规范【6】）。
 
-    流程：前置检查 -> 备份当前 -> tests 状态快照(前) -> 应用业务文件 ->
-    tests 状态快照(后) 对比（篡改即 FAIL 并回滚）-> 把本轮隐藏测试拷入 tests/ ->
+    流程：前置检查 -> 备份当前 -> tests 内容清单(前) -> 应用业务文件 ->
+    tests 内容清单(后) 对比（篡改即 FAIL 并回滚）-> 把本轮隐藏测试拷入 tests/ ->
     跑 pytest（历史+隐藏）-> 全绿则隐藏测试转正+再备份+phase=proposing；
-    否则回滚+淘汰+切换下一位。全程不调用验题模型。
+    否则回滚+淘汰+切换下一位。全程不调用任何 AI。
 
     MOCK 演练模式（config.json "mock": true）时走 _mock_verify_answer：
     随机判定、状态推进一致，但不跑 pytest、不碰 arena_repo、不需要材料。
@@ -855,9 +1105,12 @@ def verify_answer() -> Dict:
         tests_dir = arena / cfg.get("history_tests_dir", "tests")
 
         # ---- 1. 备份当前（保底，失败可还原） ----
-        backup_arena("pre_answer_r%s_%s" % (rnd, player))
+        pre_backup = backup_arena("pre_answer_r%s_%s" % (rnd, player))
+        if pre_backup is None:
+            return {"ok": False, "result": None,
+                    "reason": "基础设施错误：答题前备份失败；未应用材料，也不淘汰选手"}
 
-        def _fail(reason: str, eliminate: bool = True) -> Dict:
+        def _fail(reason: str, eliminate: bool = True, res: Optional[Dict] = None) -> Dict:
             """统一失败收尾：回滚 + （默认）淘汰 + 切换下一位。"""
             restore_arena()
             state2 = load_state()
@@ -868,7 +1121,8 @@ def verify_answer() -> Dict:
             state2["last_result"] = "FAIL"
             state2["phase"] = "answering"
             state2["pending_answer"] = None
-            state2["last_test_summary"] = None
+            state2["pending_proof"] = None
+            state2["last_test_summary"] = _summary_counts(res, overall="FAIL") if res is not None else None
             _set_msg(state2, "选手 %s 答题失败：%s" % (player, reason))
             save_state(state2)
             return {"ok": True, "result": "FAIL", "reason": reason, "player": player,
@@ -876,7 +1130,7 @@ def verify_answer() -> Dict:
                     "next_player": state2.get("current_player"),
                     "message": "选手 %s 答题失败（%s），已回滚并切换" % (player, reason)}
 
-        # ---- 2. 应用前 tests 快照 ----
+        # ---- 2. 应用前 tests 内容哈希清单 ----
         before = repo_ops.tests_status_map()
 
         # ---- 3. 应用业务文件（只进 business_dir，严禁触碰 tests/） ----
@@ -886,7 +1140,7 @@ def verify_answer() -> Dict:
         if applied.get("warning"):
             log_event("apply", applied["warning"], result="WARN", player=player, round_=rnd)
 
-        # ---- 4. 应用后 tests 快照对比（篡改历史测试 -> 立即回滚并判 FAIL） ----
+        # ---- 4. 应用后 tests 内容清单对比（篡改历史测试 -> 立即回滚并判 FAIL） ----
         after = repo_ops.tests_status_map()
         if before != after:
             return _fail("检测到历史测试被改动（篡改 tests/），已回滚")
@@ -900,40 +1154,56 @@ def verify_answer() -> Dict:
                   (rnd, player, res.get("exit_code"), res.get("passed"), res.get("total"),
                    res.get("log_text", "")[-4000:]), file=sys.stderr)
 
-        if not res.get("ok"):
+        # 业务代码在 pytest 导入/执行期间也不得改写历史测试；临时隐藏文件单独排除。
+        post_tests = repo_ops.tests_status_map(ignore_names={hidden_name})
+        if post_tests != after:
             hidden_dest = res.get("hidden_dest")
             if hidden_dest and Path(hidden_dest).exists():
                 try:
                     Path(hidden_dest).unlink()
                 except Exception:
                     pass
-            counts = _summary_counts(res)
-            detail = "历史 %s/%s，隐藏 %s/%s 未全绿" % (
-                res["history"]["passed"], res["history"]["total"],
-                res["hidden"]["passed"], res["hidden"]["total"])
-            state2 = load_state()
-            state2["last_test_summary"] = counts
-            save_state(state2)
-            return _fail(detail)
+            return _fail("检测到 pytest 运行期间历史测试内容发生变化", res=res)
+
+        green_ok, green_reason = _validate_all_green(res, _proposal_test_count(cfg))
+        if not green_ok:
+            hidden_dest = res.get("hidden_dest")
+            if hidden_dest and Path(hidden_dest).exists():
+                try:
+                    Path(hidden_dest).unlink()
+                except Exception:
+                    pass
+            return _fail(green_reason, res=res)
 
         # ---- 6. 全绿：隐藏测试永久转正 + 成功点备份 + 等待该选手出题 ----
         hidden_dest = Path(res["hidden_dest"]) if res.get("hidden_dest") else None
-        if hidden_dest and hidden_dest.exists():
-            final_name = "test_round_%s_%s.py" % (rnd, player)
-            final_path = tests_dir / final_name
-            if final_path.exists():
-                final_path = tests_dir / ("test_round_%s_%s_%s.py" % (rnd, player, uuid.uuid4().hex[:6]))
-            shutil.move(str(hidden_dest), str(final_path))
-            # 暂存目录清空（评测后清理/归档：已归档进 arena tests/）
-            for extra in hidden_dir.glob("*.py"):
-                if extra.name != "hidden_tests.py":
-                    extra.unlink()
-            try:
-                (hidden_dir / "hidden_tests.py").unlink()
-            except Exception:
-                pass
+        if not hidden_dest or not hidden_dest.exists():
+            return _fail("本轮测试虽已运行，但测试文件在转正前丢失", eliminate=False, res=res)
+        final_name = "test_round_%s_%s.py" % (rnd, player)
+        final_path = tests_dir / final_name
+        if final_path.exists():
+            final_path = tests_dir / ("test_round_%s_%s_%s.py" % (rnd, player, uuid.uuid4().hex[:6]))
+        shutil.move(str(hidden_dest), str(final_path))
 
-        backup_arena("answer_ok_r%s_%s" % (rnd, player))
+        success_backup = backup_arena("answer_ok_r%s_%s" % (rnd, player))
+        if success_backup is None:
+            restore_arena()  # 最近备份就是本轮 pre-answer；恢复后允许原选手重试
+            state2 = load_state()
+            state2["last_result"] = None
+            state2["last_test_summary"] = None
+            _set_msg(state2, "基础设施错误：答题通过后备份失败，已恢复到判定前；选手未淘汰")
+            save_state(state2)
+            return {"ok": False, "result": None,
+                    "reason": "基础设施错误：成功点备份失败，已恢复到判定前；可重新验收"}
+
+        # 成功点安全落盘后，才消费 Harness 暂存的本轮隐藏测试。
+        for extra in hidden_dir.glob("*.py"):
+            if extra.name != "hidden_tests.py":
+                extra.unlink()
+        try:
+            hidden_src.unlink()
+        except Exception:
+            pass
 
         counts = _summary_counts(res)
         state2 = load_state()
@@ -943,6 +1213,7 @@ def verify_answer() -> Dict:
         state2["last_result"] = "PASS"
         state2["last_test_summary"] = counts
         state2["pending_answer"] = None
+        state2["pending_proof"] = None
         _set_msg(state2, "选手 %s 答题通过（历史 %s/%s，隐藏 %s/%s），请提交出题材料" % (
             player, res["history"]["passed"], res["history"]["total"],
             res["hidden"]["passed"], res["hidden"]["total"]))
@@ -957,259 +1228,275 @@ def verify_answer() -> Dict:
 
 
 # ---------------------------------------------------------------------------
-# 验题模型（唯一允许的模型调用，只调一次）
-# ---------------------------------------------------------------------------
-
-def call_verifier_once(prompt_text: str) -> Tuple[bool, Optional[str], str]:
-    """单次调用 verifier_model（OpenAI 兼容 /chat/completions）。不重试。
-
-    返回 (ok, content, err)。超时按 timeout_seconds 直接判失败（由调用方判 FAIL）。
-    """
-    cfg = load_config()
-    vm = cfg.get("verifier_model", {})
-    timeout = float(vm.get("timeout_seconds", 600))
-    url = str(vm.get("base_url", "")).rstrip("/") + "/chat/completions"
-    headers = {"Authorization": "Bearer %s" % vm.get("api_key", ""), "Content-Type": "application/json"}
-    payload = {
-        "model": vm.get("model", ""),
-        "stream": False,
-        "messages": [
-            {"role": "system", "content": VERIFIER_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt_text},
-        ],
-    }
-    try:
-        import httpx  # 延迟导入：未装 httpx 不影响其他功能
-    except Exception as e:
-        return False, None, "httpx 未安装（pip install -r requirements.txt）: %s" % e
-    try:
-        resp = httpx.post(url, json=payload, headers=headers, timeout=timeout)
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        if not isinstance(content, str) or not content.strip():
-            return False, None, "模型返回内容为空"
-        return True, content, ""
-    except Exception as e:
-        return False, None, "verifier_model 调用失败（不重试，%ss 超时即 FAIL）: %s: %s" % (
-            int(timeout), type(e).__name__, e)
-
-
-def parse_model_files(text: str) -> Optional[List[Tuple[str, str]]]:
-    """解析验题模型输出（规范【8】）。
-
-    提取所有 "=== FILE: 相对路径 ===" 块，内容为其后直到下一个块头/结尾的文本。
-    一个文件块都没有 -> 返回 None（判 FAIL）。
-    """
-    matches = list(_FILE_HEADER_RE.finditer(text))
-    if not matches:
-        return None
-    files: List[Tuple[str, str]] = []
-    for i, m in enumerate(matches):
-        rel = m.group(1).strip().strip('"').strip("'").strip()
-        rel = rel.lstrip("./").replace("\\", "/")
-        start = m.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        content = text[start:end]
-        # 剥掉模型违规加的 Markdown 围栏（如果整体被 ``` 包住）
-        c = content.strip("\r\n")
-        if c.startswith("```") and c.rstrip().endswith("```"):
-            first_nl = c.find("\n")
-            if first_nl != -1:
-                c = c[first_nl + 1:c.rstrip().rfind("```")].rstrip("\n")
-        files.append((rel, c))
-    return files if files else None
-
-
-def _write_model_output(tmp_repo: Path, files: List[Tuple[str, str]], cfg: Dict) -> Tuple[int, List[str]]:
-    """把模型输出的文件块安全写入临时目录。
-
-    返回 (写入数, 被跳过的路径列表)。跳过规则：绝对路径 / 路径穿越 / 目标在
-    历史测试目录下（模型只许实现业务代码，不许动测试）。
-    """
-    tdir = cfg.get("history_tests_dir", "tests")
-    written, skipped = 0, []
-    root = tmp_repo.resolve()
-    for rel, content in files:
-        parts = [p for p in rel.split("/") if p not in ("", ".")]
-        if not parts or ".." in parts:
-            skipped.append(rel)
-            continue
-        if parts[0] == tdir:
-            skipped.append(rel)
-            continue
-        dest = (tmp_repo / Path(*parts)).resolve()
-        if not str(dest).startswith(str(root) + os.sep):
-            skipped.append(rel)
-            continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(content, encoding="utf-8")
-        written += 1
-    return written, skipped
-
-
-# ---------------------------------------------------------------------------
-# 出题验题（自证）并交棒
+# 出题：全红 -> 人工自证 -> 全绿 -> 交棒
 # ---------------------------------------------------------------------------
 
 def verify_proposal() -> Dict:
-    """校验出题并交棒（规范【6】，框架中唯一调用模型的环节）。
+    """两次推进完成出题校验；Harness 永不启动或调用 AI Agent。
 
-    流程：读材料 -> 建临时目录 tmp/relay_<uuid> -> 复制 arena 全量（排除
-    .git/hidden_tests/临时文件）-> 单次调 verifier_model 仅凭需求重新实现 ->
-    解析 === FILE === 块写入临时目录（解析失败即 FAIL，不重试）-> 拷入选手
-    hidden_tests.py -> 临时目录跑 pytest（历史+隐藏）-> 全绿：保存 prompt 到
-    prompts/、新 hidden 落 hidden_tests/、round+1、交棒；否则：回滚（恢复最近
-    备份，即出题者答题通过后的状态，其代码依规则保留）、出题者淘汰、切换下一位。
+    第一次：在一次性副本中运行历史 + 新测试，要求历史全绿、新测试全部 RED；
+    通过后创建持久手动自证目录（不含新测试），返回目录与提示词路径并暂停。
 
-    MOCK 演练模式（config.json "mock": true）时走 _mock_verify_proposal：
-    随机判定、状态推进一致，但不调模型、不跑 pytest、不碰 arena_repo。
+    第二次：人类已在该目录手动启动同模型 OpenCode（或真人编码）后再次调用；
+    Harness 校验仅业务目录发生变化，再复制工作区、注入同一份新测试，要求全部 GREEN。
+    自证代码随后丢弃，仅保存提示词和隐藏测试并交棒。
     """
     cfg = load_config()
     if cfg.get("mock"):
         return _mock_verify_proposal()
+
     with VERIFY_LOCK:
         state = load_state()
         player = state.get("current_player")
         rnd = state.get("round", 1)
 
-        # ---- 前置检查 ----
         if state.get("status") == "finished":
             return {"ok": False, "result": None, "reason": "比赛已结束"}
         if not repo_ops.is_arena_ready():
-            state = load_state()
             _set_msg(state, "arena_repo 未就绪，无法校验出题")
             save_state(state)
-            return {"ok": False, "result": None, "reason": "arena_repo 未就绪（不存在或不是 git 仓库）"}
+            return {"ok": False, "result": None,
+                    "reason": "arena_repo 未就绪（不存在或不是独立可用的 git 仓库）"}
         if state.get("phase") != "proposing":
             return {"ok": False, "result": None,
                     "reason": "当前选手尚未通过答题验收（phase=%s）" % state.get("phase")}
+
+        proof = state.get("pending_proof") or {}
         pending = state.get("pending_proposal") or {}
-        prompt_path = Path(pending.get("prompt", "")) if pending.get("prompt") else None
-        test_path = Path(pending.get("test", "")) if pending.get("test") else None
-        if not (prompt_path and test_path and prompt_path.exists() and test_path.exists()):
-            # inbox 自动拾取：出题材料已放入 inbox/ 时无需手动上传
+        prompt_path = Path(str(pending.get("prompt", ""))) if pending.get("prompt") else None
+        test_path = Path(str(pending.get("test", ""))) if pending.get("test") else None
+
+        if proof.get("stage") != "awaiting_manual_proof" and not (
+                prompt_path and test_path and prompt_path.exists() and test_path.exists()):
             picked = pickup_proposal()
             if picked.get("ok"):
                 state = load_state()
                 pending = state.get("pending_proposal") or {}
-                prompt_path = Path(pending.get("prompt", "")) if pending.get("prompt") else None
-                test_path = Path(pending.get("test", "")) if pending.get("test") else None
+                prompt_path = Path(str(pending.get("prompt", ""))) if pending.get("prompt") else None
+                test_path = Path(str(pending.get("test", ""))) if pending.get("test") else None
             if not (prompt_path and test_path and prompt_path.exists() and test_path.exists()):
                 return {"ok": False, "result": None,
-                        "reason": "尚未导入出题材料：请上传（/api/proposal / load-proposal），或把 "
-                                  "next_prompt.md 与 hidden_tests.py 放入 inbox/ 后重试"}
-        try:
-            prompt_text = prompt_path.read_text(encoding="utf-8")
-        except Exception as e:
-            return {"ok": False, "result": None, "reason": "需求文档读取失败: %s" % e}
-        if not prompt_text.strip():
-            return {"ok": False, "result": None, "reason": "需求文档为空"}
+                        "reason": "尚未导入出题材料：上传 next_prompt.md + hidden_tests.py，"
+                                  "或将它们放入 inbox/ 后重试"}
 
-        arena = arena_path()
-        tmp_root = BASE_DIR / "tmp"
-        relay_dir = tmp_root / ("relay_%s" % uuid.uuid4().hex[:12])
-        tmp_repo = relay_dir / "repo"
-
-        def _cleanup_tmp() -> None:
-            shutil.rmtree(relay_dir, ignore_errors=True)
-
-        def _fail(reason: str, res: Optional[Dict] = None) -> Dict:
-            """出题失败收尾：回滚（恢复最近成功备份）+ 出题者淘汰 + 切换下一位。
-
-            注意：最近一次成功备份即"该选手答题通过"时的状态，因此其已通过验收的
-            业务代码依赛制保留，成为后人的环境；被拒绝的只是本轮新需求。
-            """
-            _cleanup_tmp()
-            restore_arena()
-            state2 = load_state()
-            _advance(state2, eliminate_current=True)
-            state2["last_result"] = "FAIL"
-            state2["phase"] = "answering"
-            state2["pending_proposal"] = None
-            if res is not None:
-                state2["last_test_summary"] = _summary_counts(res)
-            _set_msg(state2, "选手 %s 出题失败：%s" % (player, reason))
-            save_state(state2)
-            log_event("judge-proposal", "选手 %s 出题 FAIL：%s" % (player, reason),
+        def _fail(reason: str, gate: str, res: Optional[Dict] = None) -> Dict:
+            current = load_state()
+            _cleanup_proof(current.get("pending_proof"))
+            _advance(current, eliminate_current=True)
+            current["last_result"] = "FAIL"
+            current["phase"] = "answering"
+            current["pending_proposal"] = None
+            current["pending_proof"] = None
+            current["last_test_summary"] = _summary_counts(res, overall="FAIL") if res is not None else None
+            _set_msg(current, "选手 %s 出题失败（%s）：%s" % (player, gate, reason))
+            save_state(current)
+            log_event("proposal-%s" % gate.lower(), "选手 %s 出题 FAIL：%s" % (player, reason),
                       result="FAIL", player=player, round_=rnd)
-            return {"ok": True, "result": "FAIL", "reason": reason, "player": player,
-                    "round": rnd, "eliminated": True,
-                    "next_player": state2.get("current_player"),
-                    "message": "选手 %s 出题失败（%s），已回滚并切换" % (player, reason)}
+            return {"ok": True, "result": "FAIL", "gate": gate, "reason": reason,
+                    "player": player, "round": rnd, "eliminated": True,
+                    "next_player": current.get("current_player"),
+                    "history": (_summary_counts(res, overall="FAIL")["history"] if res else None),
+                    "hidden": (_summary_counts(res, overall="FAIL")["hidden"] if res else None),
+                    "message": "选手 %s 出题失败（%s），正式 arena 未改动，已切换" % (player, reason)}
+
+        def _infra(reason: str, keep_proof: bool = False) -> Dict:
+            current = load_state()
+            if not keep_proof:
+                _cleanup_proof(current.get("pending_proof"))
+                current["pending_proof"] = None
+            _set_msg(current, "基础设施错误：%s；选手未淘汰" % reason)
+            save_state(current)
+            log_event("proposal-infra", reason, result="WARN", player=player, round_=rnd)
+            return {"ok": False, "result": None, "reason": "基础设施错误：%s" % reason}
+
+        expected = _proposal_test_count(cfg)
+
+        # ------------------------------------------------------------------
+        # 第一次推进：新测试必须全部 RED
+        # ------------------------------------------------------------------
+        if proof.get("stage") != "awaiting_manual_proof":
+            assert prompt_path is not None and test_path is not None
+            try:
+                prompt_text = prompt_path.read_text(encoding="utf-8")
+            except Exception as e:
+                return _infra("需求文档读取失败: %s" % e)
+            if not prompt_text.strip():
+                return _fail("需求文档为空", "RED")
+
+            lint = lint_hidden_test(test_path, required_count=expected)
+            if not lint.get("ok"):
+                return _fail("隐藏测试不合规：%s" % "；".join(lint.get("errors", [])), "RED")
+
+            root = BASE_DIR / "tmp" / ("manual_proof_r%s_%s_%s" % (
+                rnd, player, uuid.uuid4().hex[:10]))
+            red_repo = root / "red_check"
+            try:
+                root.mkdir(parents=True, exist_ok=False)
+                repo_ops.copy_arena_to(red_repo, for_verify=True)
+            except Exception as e:
+                shutil.rmtree(root, ignore_errors=True)
+                return _infra("创建全红检查副本失败: %s" % e)
+
+            hidden_name = "test_proposal_red_%s.py" % uuid.uuid4().hex[:8]
+            try:
+                res = run_pytest(red_repo, extra_test_file=test_path, hidden_name=hidden_name)
+            finally:
+                shutil.rmtree(red_repo, ignore_errors=True)
+            if res.get("log_text"):
+                print("[pytest proposal RED r%s %s] exit=%s\n%s" % (
+                    rnd, player, res.get("exit_code"), res.get("log_text", "")[-4000:]), file=sys.stderr)
+            if int(res.get("exit_code", -1)) < 0:
+                shutil.rmtree(root, ignore_errors=True)
+                return _infra("全红 pytest 无法完成或超时")
+            red_ok, red_reason = _validate_all_red(res, expected)
+            if not red_ok:
+                shutil.rmtree(root, ignore_errors=True)
+                return _fail(red_reason, "RED", res)
+
+            proof_repo = root / "repo"
+            prompt_copy = root / "next_prompt.md"
+            manifest_path = root / "locked_manifest.json"
+            try:
+                # 自证目录是当前正式环境的干净副本，不含新隐藏测试。
+                repo_ops.copy_arena_to(proof_repo, for_verify=False)
+                shutil.copy2(prompt_path, prompt_copy)
+                manifest = _locked_manifest(proof_repo, str(cfg.get("business_dir", "src")))
+                _write_manifest(manifest_path, manifest)
+            except Exception as e:
+                shutil.rmtree(root, ignore_errors=True)
+                return _infra("创建手动自证目录失败: %s" % e)
+
+            record = {
+                "stage": "awaiting_manual_proof",
+                "root": str(root),
+                "repo": str(proof_repo),
+                "prompt": str(prompt_copy),
+                "manifest": str(manifest_path),
+                "player": player,
+                "round": rnd,
+                "prompt_sha256": _sha256_file(prompt_path),
+                "test_sha256": _sha256_file(test_path),
+            }
+            counts = _summary_counts(res, overall="PASS")
+            current = load_state()
+            current["pending_proof"] = record
+            current["last_result"] = "PASS"
+            current["last_test_summary"] = counts
+            _set_msg(current, "全红通过；请在 %s 手动打开同模型 OpenCode，完成后再次点击 NEXT" % proof_repo)
+            save_state(current)
+            log_event("proposal-red", "新测试全部 RED；等待手动自证，目录 %s" % proof_repo,
+                      result="PASS", player=player, round_=rnd)
+            return {"ok": True, "result": "PASS", "gate": "RED", "player": player,
+                    "round": rnd, "eliminated": False,
+                    "history": counts["history"], "hidden": counts["hidden"],
+                    "proof_repo": str(proof_repo), "proof_prompt": str(prompt_copy),
+                    "message": "全红验证通过；请手动完成自证，完成后再次点击 NEXT"}
+
+        # ------------------------------------------------------------------
+        # 第二次推进：人类已完成 OpenCode/真人自证，必须全部 GREEN
+        # ------------------------------------------------------------------
+        if proof.get("player") != player or int(proof.get("round", -1)) != int(rnd):
+            return _infra("手动自证状态与当前选手/轮次不一致")
+        if not (prompt_path and test_path and prompt_path.exists() and test_path.exists()):
+            return _infra("已暂存的出题材料丢失", keep_proof=True)
+
+        root = Path(str(proof.get("root", "")))
+        proof_repo = Path(str(proof.get("repo", "")))
+        manifest_path = Path(str(proof.get("manifest", "")))
+        if not (_proof_root_is_safe(root) and proof_repo.is_dir() and manifest_path.is_file()):
+            current = load_state()
+            _cleanup_proof(current.get("pending_proof"))
+            current["pending_proof"] = None
+            _set_msg(current, "手动自证目录缺失，已重置；再次点击 NEXT 将重新运行全红")
+            save_state(current)
+            return {"ok": False, "result": None,
+                    "reason": "手动自证目录缺失，已重置到全红验证之前"}
+
+        if (_sha256_file(prompt_path) != proof.get("prompt_sha256")
+                or _sha256_file(test_path) != proof.get("test_sha256")):
+            return _fail("全红后出题材料发生变化", "GREEN")
 
         try:
-            # ---- 1. 临时目录 + 复制 arena 全量 ----
-            relay_dir.mkdir(parents=True, exist_ok=True)
-            try:
-                repo_ops.copy_arena_to(tmp_repo, for_verify=True)
-            except Exception as e:
-                return _fail("复制 arena_repo 失败: %s" % e)
+            before = _read_manifest(manifest_path)
+            after = _locked_manifest(proof_repo, str(cfg.get("business_dir", "src")))
+        except Exception as e:
+            return _infra("无法校验自证目录锁定文件: %s" % e, keep_proof=True)
+        if before != after:
+            changed = sorted(set(before) ^ set(after))
+            if not changed:
+                changed = sorted(k for k in before if before.get(k) != after.get(k))
+            detail = "、".join(changed[:8]) or "内容哈希变化"
+            return _fail("自证修改了业务目录之外的锁定文件：%s" % detail, "GREEN")
 
-            # ---- 2. 单次调用验题模型（全框架唯一的模型调用） ----
-            ok, content, err = call_verifier_once(prompt_text)
-            if not ok:
-                return _fail("验题模型不可用或超时 -> %s" % err)
+        green_repo = root / "green_check"
+        try:
+            shutil.rmtree(green_repo, ignore_errors=True)
+            shutil.copytree(
+                proof_repo, green_repo,
+                ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "*.pyc", ".DS_Store"),
+            )
+        except Exception as e:
+            return _infra("复制手动自证结果失败: %s" % e, keep_proof=True)
 
-            # ---- 3. 解析 === FILE === 块（无任何块即 FAIL，不重试） ----
-            files = parse_model_files(content or "")
-            if not files:
-                return _fail("模型输出未包含任何 === FILE: ... === 文件块（格式非法）")
-
-            # ---- 4. 模型输出写入临时目录（禁止写 tests/） ----
-            written, skipped = _write_model_output(tmp_repo, files, cfg)
-            if written == 0:
-                return _fail("模型输出没有可写入的合法文件（全部被安全规则跳过）")
-            if skipped:
-                log_event("judge-proposal", "模型试图写 tests/ 或非法路径，已跳过 %d 个块" % len(skipped),
-                          result="WARN", player=player, round_=rnd)
-
-            # ---- 5. 选手隐藏测试拷入临时目录 tests/ ----
-            hidden_name = "test_hidden_proposal_%s.py" % uuid.uuid4().hex[:8]
-
-            # ---- 6. 临时目录跑 pytest（历史+隐藏） ----
-            res = run_pytest(tmp_repo, extra_test_file=test_path, hidden_name=hidden_name)
-            if res.get("log_text"):
-                print("[pytest proposal r%s %s] exit=%s passed=%s total=%s\n%s" %
-                      (rnd, player, res.get("exit_code"), res.get("passed"), res.get("total"),
-                       res.get("log_text", "")[-4000:]), file=sys.stderr)
-            if not res.get("ok"):
-                return _fail("验题实现未让全部测试通过（历史 %s/%s，隐藏 %s/%s）" % (
-                    res["history"]["passed"], res["history"]["total"],
-                    res["hidden"]["passed"], res["hidden"]["total"]), res)
-
-            # ---- 7. 合法：保存需求 + 新一轮隐藏测试 + 交棒 ----
-            prompts_dir = resolve_path(cfg.get("prompts_dir", "prompts"))
-            prompts_dir.mkdir(parents=True, exist_ok=True)
-            new_round = rnd + 1
-            prompt_name = "round_%s_by_%s.md" % (new_round, player)
-            (prompts_dir / prompt_name).write_text(prompt_text, encoding="utf-8")
-
-            hidden_dir = resolve_path(cfg.get("hidden_tests_dir", "hidden_tests"))
-            hidden_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(test_path, hidden_dir / "hidden_tests.py")  # 供下一轮作为"本轮隐藏测试"
-
-            counts = _summary_counts(res)
-            state2 = load_state()
-            state2["current_prompt_file"] = prompt_name
-            state2["round"] = new_round
-            _advance(state2, eliminate_current=False)  # 交棒：出题者保留，切换下一位
-            state2["phase"] = "answering"
-            state2["scores"] = dict(state2.get("scores", {}))
-            state2["scores"][player] = state2["scores"].get(player, 0) + 1
-            state2["last_result"] = "PASS"
-            state2["last_test_summary"] = counts
-            state2["pending_proposal"] = None
-            _set_msg(state2, "选手 %s 出题合法，已交棒（第 %s 轮，需求 %s）" % (
-                player, new_round, prompt_name))
-            save_state(state2)
-            log_event("judge-proposal", "选手 %s 出题 PASS：验题自证通过（历史 %s/%s，隐藏 %s/%s），交棒 -> 第 %s 轮" % (
-                player, res["history"]["passed"], res["history"]["total"],
-                res["hidden"]["passed"], res["hidden"]["total"], new_round),
-                result="PASS", player=player, round_=rnd)
-            return {"ok": True, "result": "PASS", "player": player, "round": rnd,
-                    "new_round": new_round, "eliminated": False,
-                    "next_player": state2.get("current_player"),
-                    "history": counts["history"], "hidden": counts["hidden"],
-                    "message": "出题合法，已交棒：第 %s 轮，当前选手 %s" % (new_round, state2.get("current_player"))}
+        hidden_name = "test_proposal_green_%s.py" % uuid.uuid4().hex[:8]
+        try:
+            res = run_pytest(green_repo, extra_test_file=test_path, hidden_name=hidden_name)
         finally:
-            _cleanup_tmp()
+            shutil.rmtree(green_repo, ignore_errors=True)
+        if res.get("log_text"):
+            print("[pytest proposal GREEN r%s %s] exit=%s\n%s" % (
+                rnd, player, res.get("exit_code"), res.get("log_text", "")[-4000:]), file=sys.stderr)
+        if int(res.get("exit_code", -1)) < 0:
+            return _infra("全绿 pytest 无法完成或超时", keep_proof=True)
+        green_ok, green_reason = _validate_all_green(res, expected)
+        if not green_ok:
+            return _fail(green_reason, "GREEN", res)
+
+        prompt_text = prompt_path.read_text(encoding="utf-8")
+        prompts_dir = resolve_path(cfg.get("prompts_dir", "prompts"))
+        hidden_dir = resolve_path(cfg.get("hidden_tests_dir", "hidden_tests"))
+        prompts_dir.mkdir(parents=True, exist_ok=True)
+        hidden_dir.mkdir(parents=True, exist_ok=True)
+        new_round = rnd + 1
+        prompt_name = "round_%s_by_%s.md" % (new_round, player)
+        prompt_dest = prompts_dir / prompt_name
+        hidden_dest = hidden_dir / "hidden_tests.py"
+        prompt_tmp = prompt_dest.with_suffix(prompt_dest.suffix + ".tmp")
+        hidden_tmp = hidden_dest.with_suffix(hidden_dest.suffix + ".tmp")
+        try:
+            prompt_tmp.write_text(prompt_text, encoding="utf-8")
+            shutil.copy2(test_path, hidden_tmp)
+            os.replace(prompt_tmp, prompt_dest)
+            os.replace(hidden_tmp, hidden_dest)
+        except Exception as e:
+            for tmp in (prompt_tmp, hidden_tmp):
+                try:
+                    tmp.unlink()
+                except Exception:
+                    pass
+            return _infra("保存下一轮提示词/隐藏测试失败: %s" % e, keep_proof=True)
+
+        counts = _summary_counts(res)
+        current = load_state()
+        _cleanup_proof(current.get("pending_proof"))
+        current["current_prompt_file"] = prompt_name
+        current["round"] = new_round
+        _advance(current, eliminate_current=False)
+        current["phase"] = "answering"
+        current["scores"] = dict(current.get("scores", {}))
+        current["scores"][player] = current["scores"].get(player, 0) + 1
+        current["last_result"] = "PASS"
+        current["last_test_summary"] = counts
+        current["pending_proposal"] = None
+        current["pending_proof"] = None
+        _set_msg(current, "手动自证全绿，选手 %s 出题合法，已交棒至第 %s 轮" % (player, new_round))
+        save_state(current)
+        log_event("proposal-green", "手动自证全部 GREEN：历史 %s/%s，新测试 %s/%s；交棒至第 %s 轮" % (
+            res["history"]["passed"], res["history"]["total"],
+            res["hidden"]["passed"], res["hidden"]["total"], new_round),
+            result="PASS", player=player, round_=rnd)
+        return {"ok": True, "result": "PASS", "gate": "GREEN", "player": player,
+                "round": rnd, "new_round": new_round, "eliminated": False,
+                "next_player": current.get("current_player"),
+                "history": counts["history"], "hidden": counts["hidden"],
+                "message": "手动自证全绿，出题有效；已交棒至第 %s 轮" % new_round}

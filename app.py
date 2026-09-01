@@ -68,14 +68,16 @@ async def api_state():
     """当前赛况（轮次/选手/存活/淘汰/arena_ready/最近结果等）+ inbox 材料就位情况。
 
     step 为派生字段（时间顺序：① 作答 ② 判定 ③ 出题 ④ 自证）：
-    phase=answering -> step 1（等待作答材料）；phase=proposing -> step 3（等待出题材料）。
-    步骤 2/4 是按钮触发的瞬时评测动作，由前端在请求进行中本地高亮。
+    phase=answering -> step 1；phase=proposing -> step 3；新测试全红并创建手动
+    自证目录后 -> step 4。步骤 2 与 RED/GREEN 测试是按钮触发的评测动作。
     """
     try:
         ensure_dirs()
         repo_ops.refresh_arena_ready()
         state = load_state()
-        step = 3 if state.get("phase") == "proposing" else 1
+        proof = state.get("pending_proof") or {}
+        step = 4 if proof.get("stage") == "awaiting_manual_proof" \
+            else (3 if state.get("phase") == "proposing" else 1)
         return {"ok": True, "state": state, "inbox": judge.inbox_status(), "step": step,
                 "mock": judge.is_mock_enabled()}
     except Exception as e:  # 任何异常都不让前端拿到 500 崩溃
@@ -218,7 +220,7 @@ async def api_proposal(
 
 @app.post("/api/judge-proposal")
 async def api_judge_proposal():
-    """校验出题并交棒：临时目录 + 验题模型自证（单次调用）+ pytest。"""
+    """状态化出题校验：第一次全红并创建手动自证目录；第二次全绿并交棒。"""
     try:
         result = await asyncio.to_thread(judge.verify_proposal)
         return result
@@ -300,8 +302,8 @@ async def api_draw():
 async def api_mock(payload: dict):
     """开关 MOCK 演练模式（写回 config.json，Web / CLI 同时生效）。
 
-    开启后：验收答题 / 校验出题的判定结果改为随机模拟，状态推进与真实
-    流程一致，但不跑 pytest、不调验题模型、不读写 arena_repo、不需要材料。
+    开启后：验收答题 / 出题全红 / 手动自证全绿的判定结果改为随机模拟，
+    状态推进与真实流程一致，但不跑 pytest、不读写 arena_repo、不需要材料。
     用于人类上真实流程前预演整场操作。请求体：{"enabled": true/false}。
     """
     try:
@@ -311,7 +313,7 @@ async def api_mock(payload: dict):
         set_config_flag("mock", enabled)
         log_event("mock", "MOCK 演练模式已%s（%s）" % (
             "开启" if enabled else "关闭",
-            "随机模拟判定：不跑 pytest、不调验题模型、不碰 arena_repo" if enabled
+            "随机模拟判定：不跑 pytest、不碰 arena_repo" if enabled
             else "恢复真实评测"))
         return {"ok": True, "mock": enabled}
     except Exception as e:
