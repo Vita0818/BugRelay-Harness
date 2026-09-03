@@ -69,8 +69,8 @@ def is_arena_ready() -> bool:
 def refresh_arena_ready() -> bool:
     """刷新 state 中的 arena_ready 字段（供 Web 启动 / CLI 每次执行前调用）。
 
-    arena 就绪时顺带做**规范注入自愈**：TESTING_GUIDELINES.md 缺失或内容过时
-    就重写（core/rules.inject_rules 幂等，内容一致不写盘），并把 rules_injected
+    arena 就绪时顺带做**项目指令/规范注入自愈**：AGENTS.md 托管区块或
+    TESTING_GUIDELINES.md 缺失/过时就重写（core/rules.inject_rules 幂等），并把 rules_injected
     写入 state。这样人类把 arena_repo 接入框架的那一刻，规范就已在仓库里。
     """
     ready = is_arena_ready()

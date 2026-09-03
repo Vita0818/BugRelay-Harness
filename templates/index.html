@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=24">
+<link rel="stylesheet" href="/static/style.css?v=42">
 </head>
 <body>
 
@@ -23,6 +23,7 @@
       <span class="sep">·</span> <b id="st-arena">–</b>
       <span class="sep">·</span> 最近 <b id="st-last">–</b>
     </span>
+    <!-- 注：淘 X 只显示人数；完整淘汰/成绩明细在下方接力战况带展开 -->
     <span class="spacer"></span>
     <button id="btn-mock" class="btn ghost">MOCK 关</button>
     <button id="btn-draw" class="btn">抽签</button>
@@ -30,59 +31,77 @@
     <button id="btn-debug" class="btn ghost">调试</button>
   </div>
   <b id="st-player" class="hero-player">–</b>
+  <div class="relay-strip" id="relay-strip"></div>
 </header>
 
-<!-- 主画面：横向 1×4 四格阶段带
-     编号 = 时间顺序：① 作答 → ② 判定 → ③ 出题 → ④ 自证，从左到右接力。 -->
+<!-- 主画面：横向 1×4 四格阶段带（录屏主角）
+     编号 = 时间顺序：① 作答 → ② 判定 → ③ 出题 → ④ 自证，箭头表示接力方向。 -->
 <main class="arena">
   <div class="track">
     <div class="tnode" id="step-1">
-      <div class="tnode-name">1 作答</div>
-      <div class="tnode-who">等待选手</div>
-      <div class="tnode-state">等待交付</div>
+      <div class="tnode-top">
+        <span class="tnode-no">1</span>
+        <span class="tnode-name">作答</span>
+      </div>
+      <div class="tnode-bottom">
+        <div class="tnode-who">等待选手</div>
+        <div class="tnode-state">等待交付</div>
+      </div>
     </div>
+    <div class="tarrow" id="arrow-1">→</div>
     <div class="tnode" id="step-2">
-      <div class="tnode-name">2 判定</div>
-      <div class="tnode-who">框架跑测试</div>
-      <div class="tnode-state">历史 + 隐藏</div>
+      <div class="tnode-top">
+        <span class="tnode-no">2</span>
+        <span class="tnode-name">判定</span>
+      </div>
+      <div class="tnode-bottom">
+        <div class="tnode-who">框架跑测试</div>
+        <div class="tnode-state">历史 + 隐藏</div>
+      </div>
     </div>
+    <div class="tarrow" id="arrow-2">→</div>
     <div class="tnode" id="step-3">
-      <div class="tnode-name">3 出题</div>
-      <div class="tnode-who">等待选手</div>
-      <div class="tnode-state">给下一棒需求</div>
+      <div class="tnode-top">
+        <span class="tnode-no">3</span>
+        <span class="tnode-name">出题</span>
+      </div>
+      <div class="tnode-bottom">
+        <div class="tnode-who">等待选手</div>
+        <div class="tnode-state">给下一棒需求</div>
+      </div>
     </div>
+    <div class="tarrow" id="arrow-3">→</div>
     <div class="tnode" id="step-4">
-      <div class="tnode-name">4 自证</div>
-      <div class="tnode-who">手动启动同模型 Agent</div>
-      <div class="tnode-state">RED → GREEN</div>
+      <div class="tnode-top">
+        <span class="tnode-no">4</span>
+        <span class="tnode-name">自证</span>
+      </div>
+      <div class="tnode-bottom">
+        <div class="tnode-who">手动启动同模型 Agent</div>
+        <div class="tnode-state">RED → GREEN</div>
+      </div>
     </div>
-  </div>
-  <div class="prompt-strip">
-    <span class="prompt-strip-label">当前提示词</span>
-    <b id="prompt-strip-name" class="prompt-strip-name">等待首轮需求</b>
-    <span id="prompt-strip-body" class="prompt-strip-body"></span>
-    <button id="btn-copy-prompt-main" class="mini">复制提示词</button>
   </div>
 </main>
 
-<!-- 底栏：判定结果（常驻）+ 主操作 -->
-<footer class="console">
-  <div class="result-zone">
-    <div class="result-line">
-      <span class="result-label">判定结果</span>
-      <b id="t-overall" class="badge big">–</b>
-      <span class="result-counts">
-        历史 <b id="t-history" class="badge">–</b><span id="t-history-count" class="count"></span>
-        <span class="sep">·</span>
-        隐藏 <b id="t-hidden" class="badge">–</b><span id="t-hidden-count" class="count"></span>
-      </span>
+<!-- 底栏：交接操作台（提示词信息 + 复制路径 + 复制提示词 + NEXT）。
+     ① 作答 / ④ 自证两个交接时刻整条黑底聚光；判定结果只在全屏红绿定格展示。 -->
+<footer class="console" id="console">
+  <div class="console-info">
+    <div class="prompt-row-main">
+      <span class="prompt-strip-label" id="prompt-strip-label">当前提示词</span>
+      <b id="prompt-strip-name" class="prompt-strip-name">等待首轮需求</b>
+      <span id="prompt-strip-body" class="prompt-strip-body"></span>
+      <span id="handoff-hint" class="handoff-hint is-hidden"></span>
     </div>
-    <div id="result-msg" class="result-msg">暂无判定</div>
+    <div class="prompt-row-path is-hidden" id="prompt-row-path">
+      <span class="path-tag" id="path-tag">路径</span>
+      <code id="path-value" class="path-value"></code>
+    </div>
   </div>
   <div class="op-zone">
-    <span id="action-msgs">
-      <span id="answer-msg" class="op-msg"></span><span id="proposal-msg" class="op-msg"></span><span id="rules-msg" class="op-msg"></span>
-    </span>
+    <button id="btn-copy-path" class="btn copy-path-btn is-hidden">复制路径</button>
+    <button id="btn-copy-prompt-main" class="btn copy-prompt-btn">复制提示词</button>
     <button id="btn-advance" class="btn primary big">NEXT</button>
   </div>
 </footer>
@@ -175,6 +194,6 @@
   </div>
 </div>
 
-<script src="/static/main.js?v=24"></script>
+<script src="/static/main.js?v=38"></script>
 </body>
 </html>

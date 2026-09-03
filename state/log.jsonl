@@ -1,1 +1,86 @@
+{"ts": "2026-09-03 13:36:29", "action": "inject-rules", "result": "INFO", "player": null, "round": null, "detail": "已注入 arena_repo：TESTING_GUIDELINES.md、AGENTS.md"}
+{"ts": "2026-09-03 13:31:04", "action": "inject-rules", "result": "INFO", "player": null, "round": null, "detail": "已注入 arena_repo：TESTING_GUIDELINES.md、AGENTS.md"}
+{"ts": "2026-09-02 15:51:45", "action": "proposal-green", "result": "PASS", "player": "SDT", "round": 1, "detail": "MOCK 演练：手动自证全绿判定 PASS（未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 15:51:35", "action": "proposal-red", "result": "PASS", "player": "SDT", "round": 1, "detail": "MOCK 演练：新测试全部 RED，进入手动自证等待"}
+{"ts": "2026-09-02 15:51:31", "action": "judge-answer", "result": "PASS", "player": "SDT", "round": 1, "detail": "MOCK 演练：选手 SDT 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 15:51:05", "action": "draw", "result": "INFO", "player": null, "round": null, "detail": "顺序抽签（重置为新比赛）：1.SDT → 2.STP → 3.HYN → 4.GPN → 5.GML → 6.GPT → 7.LCT → 8.GRK → 9.QWM → 10.GMF → 11.FBL → 12.SNT → 13.MMO → 14.QWS → 15.QWF → 16.GLF → 17.MSG → 18.GPM → 19.NMU → 20.DSP → 21.GMN → 22.SDE → 23.MST → 24.DSF → 25.HKU → 26.KMI → 27.OPS → 28.MSS → 29.MMP → 30.GPP → 31.MNM → 32.GLM"}
+{"ts": "2026-09-02 15:48:27", "action": "proposal-red", "result": "FAIL", "player": "QWS", "round": 3, "detail": "MOCK 演练：全红判定 FAIL"}
+{"ts": "2026-09-02 15:48:16", "action": "judge-answer", "result": "PASS", "player": "QWS", "round": 3, "detail": "MOCK 演练：选手 QWS 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 15:40:25", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-09-02 15:08:07", "action": "proposal-green", "result": "PASS", "player": "GPM", "round": 2, "detail": "MOCK 演练：手动自证全绿判定 PASS（未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 15:08:05", "action": "proposal-red", "result": "PASS", "player": "GPM", "round": 2, "detail": "MOCK 演练：新测试全部 RED，进入手动自证等待"}
+{"ts": "2026-09-02 15:08:03", "action": "judge-answer", "result": "PASS", "player": "GPM", "round": 2, "detail": "MOCK 演练：选手 GPM 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 15:07:09", "action": "proposal-green", "result": "FAIL", "player": "SDE", "round": 2, "detail": "MOCK 演练：手动自证全绿判定 FAIL（未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 15:05:43", "action": "proposal-red", "result": "PASS", "player": "SDE", "round": 2, "detail": "MOCK 演练：新测试全部 RED，进入手动自证等待"}
+{"ts": "2026-09-02 15:04:49", "action": "judge-answer", "result": "PASS", "player": "SDE", "round": 2, "detail": "MOCK 演练：选手 SDE 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 15:02:47", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-09-02 11:03:39", "action": "proposal-red", "result": "FAIL", "player": "GLF", "round": 2, "detail": "MOCK 演练：全红判定 FAIL"}
+{"ts": "2026-09-02 11:03:33", "action": "judge-answer", "result": "PASS", "player": "GLF", "round": 2, "detail": "MOCK 演练：选手 GLF 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 11:03:29", "action": "judge-answer", "result": "FAIL", "player": "GPT", "round": 2, "detail": "MOCK 演练：选手 GPT 答题 FAIL（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 11:03:24", "action": "proposal-red", "result": "FAIL", "player": "DSP", "round": 2, "detail": "MOCK 演练：全红判定 FAIL"}
+{"ts": "2026-09-02 11:03:22", "action": "judge-answer", "result": "PASS", "player": "DSP", "round": 2, "detail": "MOCK 演练：选手 DSP 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 11:03:14", "action": "judge-answer", "result": "FAIL", "player": "MSG", "round": 2, "detail": "MOCK 演练：选手 MSG 答题 FAIL（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 11:03:05", "action": "judge-answer", "result": "FAIL", "player": "MMP", "round": 2, "detail": "MOCK 演练：选手 MMP 答题 FAIL（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 11:02:57", "action": "proposal-green", "result": "PASS", "player": "HKU", "round": 1, "detail": "MOCK 演练：手动自证全绿判定 PASS（未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 11:02:43", "action": "proposal-red", "result": "PASS", "player": "HKU", "round": 1, "detail": "MOCK 演练：新测试全部 RED，进入手动自证等待"}
+{"ts": "2026-09-02 11:00:44", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-09-02 10:58:26", "action": "judge-answer", "result": "PASS", "player": "HKU", "round": 1, "detail": "MOCK 演练：选手 HKU 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 10:57:04", "action": "draw", "result": "INFO", "player": null, "round": null, "detail": "顺序抽签（重置为新比赛）：1.HKU → 2.MMP → 3.MSG → 4.DSP → 5.GPT → 6.GLF → 7.SDP → 8.GPM → 9.QWS → 10.QWF → 11.FBL → 12.GRK → 13.GPP → 14.STP → 15.DSF → 16.GPN → 17.GML → 18.GLM → 19.MSS → 20.MMO → 21.KMI → 22.GMF → 23.NMU → 24.SDT → 25.GMN → 26.QWM → 27.MNM → 28.LCT → 29.HYN → 30.MST → 31.OPS → 32.SNT"}
+{"ts": "2026-09-02 10:51:19", "action": "draw", "result": "INFO", "player": null, "round": null, "detail": "顺序抽签（重置为新比赛）：1.STP → 2.SNT → 3.QWF → 4.MST → 5.GLM → 6.MNM → 7.FBL → 8.GPP → 9.SDP → 10.DSF → 11.GMN → 12.OPS → 13.QWS → 14.SDT → 15.QWM → 16.GLF → 17.GMF → 18.GPN → 19.DSP → 20.MMP → 21.GML → 22.HKU → 23.MSG → 24.KMI → 25.MSS → 26.HYN → 27.GRK → 28.NMU → 29.LCT → 30.GPT → 31.MMO → 32.GPM"}
+{"ts": "2026-09-02 10:50:39", "action": "judge-answer", "result": "PASS", "player": "SDP", "round": 6, "detail": "MOCK 演练：选手 SDP 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 10:47:32", "action": "mock", "result": "INFO", "player": null, "round": null, "detail": "MOCK 演练模式已开启（随机模拟判定：不跑 pytest、不碰 arena_repo）"}
+{"ts": "2026-09-02 10:47:30", "action": "mock", "result": "INFO", "player": null, "round": null, "detail": "MOCK 演练模式已关闭（恢复真实评测）"}
+{"ts": "2026-09-02 10:46:25", "action": "proposal-red", "result": "FAIL", "player": "DSF", "round": 6, "detail": "MOCK 演练：全红判定 FAIL"}
+{"ts": "2026-09-02 10:46:19", "action": "judge-answer", "result": "PASS", "player": "DSF", "round": 6, "detail": "MOCK 演练：选手 DSF 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 10:32:52", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-09-02 10:32:16", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-09-02 10:16:48", "action": "proposal-green", "result": "PASS", "player": "NMU", "round": 5, "detail": "MOCK 演练：手动自证全绿判定 PASS（未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 10:16:45", "action": "proposal-red", "result": "PASS", "player": "NMU", "round": 5, "detail": "MOCK 演练：新测试全部 RED，进入手动自证等待"}
+{"ts": "2026-09-02 10:16:42", "action": "judge-answer", "result": "PASS", "player": "NMU", "round": 5, "detail": "MOCK 演练：选手 NMU 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 10:16:35", "action": "proposal-green", "result": "PASS", "player": "HKU", "round": 4, "detail": "MOCK 演练：手动自证全绿判定 PASS（未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-09-02 09:31:38", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-09-01 20:44:20", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-09-01 20:38:35", "action": "proposal-red", "result": "PASS", "player": "HKU", "round": 4, "detail": "MOCK 演练：新测试全部 RED，进入手动自证等待"}
+{"ts": "2026-09-01 19:52:18", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-08-31 19:25:36", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-08-31 19:11:55", "action": "judge-answer", "result": "PASS", "player": "HKU", "round": 4, "detail": "MOCK 演练：选手 HKU 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:11:38", "action": "judge-proposal", "result": "FAIL", "player": "MSS", "round": 4, "detail": "MOCK 演练：选手 MSS 出题 FAIL（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:11:35", "action": "judge-answer", "result": "PASS", "player": "MSS", "round": 4, "detail": "MOCK 演练：选手 MSS 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:11:34", "action": "judge-proposal", "result": "FAIL", "player": "GLM", "round": 4, "detail": "MOCK 演练：选手 GLM 出题 FAIL（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:11:32", "action": "judge-answer", "result": "PASS", "player": "GLM", "round": 4, "detail": "MOCK 演练：选手 GLM 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:11:31", "action": "judge-proposal", "result": "PASS", "player": "OPS", "round": 3, "detail": "MOCK 演练：选手 OPS 出题 PASS（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:11:29", "action": "judge-answer", "result": "PASS", "player": "OPS", "round": 3, "detail": "MOCK 演练：选手 OPS 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:06:40", "action": "judge-proposal", "result": "FAIL", "player": "GML", "round": 3, "detail": "MOCK 演练：选手 GML 出题 FAIL（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:06:25", "action": "judge-answer", "result": "PASS", "player": "GML", "round": 3, "detail": "MOCK 演练：选手 GML 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:03:10", "action": "judge-answer", "result": "FAIL", "player": "GMF", "round": 3, "detail": "MOCK 演练：选手 GMF 答题 FAIL（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:02:41", "action": "judge-proposal", "result": "FAIL", "player": "SDT", "round": 3, "detail": "MOCK 演练：选手 SDT 出题 FAIL（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:02:38", "action": "judge-answer", "result": "PASS", "player": "SDT", "round": 3, "detail": "MOCK 演练：选手 SDT 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 19:02:34", "action": "judge-proposal", "result": "PASS", "player": "GPP", "round": 2, "detail": "MOCK 演练：选手 GPP 出题 PASS（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 18:48:13", "action": "judge-answer", "result": "PASS", "player": "GPP", "round": 2, "detail": "MOCK 演练：选手 GPP 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 18:48:09", "action": "judge-answer", "result": "FAIL", "player": "MNM", "round": 2, "detail": "MOCK 演练：选手 MNM 答题 FAIL（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 18:48:07", "action": "judge-proposal", "result": "PASS", "player": "GLF", "round": 1, "detail": "MOCK 演练：选手 GLF 出题 PASS（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 18:48:05", "action": "judge-answer", "result": "PASS", "player": "GLF", "round": 1, "detail": "MOCK 演练：选手 GLF 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 17:45:47", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-08-31 17:45:18", "action": "set-first-prompt", "result": "INFO", "player": "GLF", "round": 1, "detail": "导入首轮需求（round_1_initial.md）"}
+{"ts": "2026-08-31 17:40:09", "action": "draw", "result": "INFO", "player": null, "round": null, "detail": "顺序抽签（重置为新比赛）：1.GLF → 2.MNM → 3.GPP → 4.SDT → 5.GMF → 6.GML → 7.OPS → 8.GLM → 9.MSS → 10.HKU → 11.NMU → 12.DSF → 13.SDP → 14.GMN → 15.MST → 16.DSP → 17.HYN → 18.SNT → 19.GPM → 20.QWM → 21.QWF → 22.FBL → 23.KMI → 24.GRK → 25.GPT → 26.GPN → 27.QWS → 28.STP → 29.MMP → 30.MSG → 31.LCT → 32.MMO"}
+{"ts": "2026-08-31 17:36:53", "action": "judge-answer", "result": "FAIL", "player": "DSP", "round": 3, "detail": "MOCK 演练：选手 DSP 答题 FAIL（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 17:36:50", "action": "judge-proposal", "result": "FAIL", "player": "HKU", "round": 3, "detail": "MOCK 演练：选手 HKU 出题 FAIL（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 17:36:48", "action": "judge-answer", "result": "PASS", "player": "HKU", "round": 3, "detail": "MOCK 演练：选手 HKU 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 17:36:41", "action": "judge-proposal", "result": "FAIL", "player": "GLF", "round": 3, "detail": "MOCK 演练：选手 GLF 出题 FAIL（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 17:12:50", "action": "judge-answer", "result": "PASS", "player": "GLF", "round": 3, "detail": "MOCK 演练：选手 GLF 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 17:04:27", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-08-31 16:19:31", "action": "judge-answer", "result": "FAIL", "player": "GPT", "round": 3, "detail": "MOCK 演练：选手 GPT 答题 FAIL（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 16:19:27", "action": "judge-proposal", "result": "PASS", "player": "MNM", "round": 2, "detail": "MOCK 演练：选手 MNM 出题 PASS（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 16:11:46", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
+{"ts": "2026-08-31 15:50:25", "action": "judge-answer", "result": "PASS", "player": "MNM", "round": 2, "detail": "MOCK 演练：选手 MNM 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 15:45:05", "action": "judge-proposal", "result": "PASS", "player": "MSG", "round": 1, "detail": "MOCK 演练：选手 MSG 出题 PASS（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 15:44:57", "action": "judge-answer", "result": "PASS", "player": "MSG", "round": 1, "detail": "MOCK 演练：选手 MSG 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 15:44:32", "action": "draw", "result": "INFO", "player": null, "round": null, "detail": "顺序抽签（重置为新比赛）：1.MSG → 2.MNM → 3.GPT → 4.GLF → 5.HKU → 6.DSP → 7.OPS → 8.MSS → 9.GMN → 10.QWF → 11.MMP → 12.FBL → 13.KMI → 14.DSF → 15.LCT → 16.GPN → 17.GMF → 18.MMO → 19.GPM → 20.STP → 21.MST → 22.SDT → 23.SNT → 24.GML → 25.GRK → 26.GPP → 27.QWM → 28.GLM → 29.QWS → 30.SDP → 31.HYN → 32.NMU"}
+{"ts": "2026-08-31 15:44:25", "action": "judge-proposal", "result": "PASS", "player": "SNT", "round": 2, "detail": "MOCK 演练：选手 SNT 出题 PASS（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 15:39:42", "action": "judge-answer", "result": "PASS", "player": "SNT", "round": 2, "detail": "MOCK 演练：选手 SNT 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 15:39:36", "action": "judge-proposal", "result": "PASS", "player": "OPS", "round": 1, "detail": "MOCK 演练：选手 OPS 出题 PASS（随机模拟，未调用验题模型、未读写 arena_repo）"}
+{"ts": "2026-08-31 15:39:33", "action": "judge-answer", "result": "PASS", "player": "OPS", "round": 1, "detail": "MOCK 演练：选手 OPS 答题 PASS（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 15:39:03", "action": "judge-answer", "result": "FAIL", "player": "FBL", "round": 1, "detail": "MOCK 演练：选手 FBL 答题 FAIL（随机模拟，未运行 pytest、未读写 arena_repo）"}
+{"ts": "2026-08-31 15:38:56", "action": "mock", "result": "INFO", "player": null, "round": null, "detail": "MOCK 演练模式已开启（随机模拟判定：不跑 pytest、不调验题模型、不碰 arena_repo）"}
+{"ts": "2026-08-31 15:37:26", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}
 {"ts": "2026-08-31 15:30:39", "action": "startup", "result": "INFO", "player": null, "round": null, "detail": "框架启动（arena_repo 未就绪，相关操作将不可用）"}

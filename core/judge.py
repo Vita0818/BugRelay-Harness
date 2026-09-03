@@ -575,9 +575,8 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
     6. 测试数量不符「一题一缺陷、三测同源」：必须恰好 required_count 个 test_*
        函数（config.proposal_test_count，默认 3），全部针对同一缺陷。
 
-    警告级（只写日志提示，不阻断）：
-    - 测试引用了多个业务模块（src/...）—— 疑似一道题里测了多个不相关问题
-      （"同一问题"无法静态确证，仅启发式提示）。
+    “一个问题”按单一验收目标判断，不按文件或模块数量判断；复杂问题可以横跨多个模块，
+    因此静态闸门不会因引用多个业务模块而警告或拒绝。
     """
     path = Path(py_path)
     errors: List[str] = []
@@ -588,7 +587,6 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
             required_count = int(cfg.get("proposal_test_count", 3))
         except (TypeError, ValueError):
             required_count = 3
-    business_dir = str(cfg.get("business_dir", "src")).strip("/") or "src"
     try:
         source = path.read_text(encoding="utf-8")
     except Exception as e:
@@ -620,23 +618,18 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
         errors.append("所有 test_* 必须是模块顶层普通函数；禁止嵌套测试、测试类方法或 async 测试")
 
     test_count = len(top_tests)
-    business_modules: set = set()
     for node in ast.walk(tree):
-        # import 检查（顺带收集业务模块引用，供"三测同源"启发式）
+        # import 检查；业务模块数量不参与“一题一问题”的判断。
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "tests" or alias.name.startswith("tests."):
                     errors.append("禁止依赖 tests/ 历史测试模块: import %s" % alias.name)
-                if alias.name == business_dir or alias.name.startswith(business_dir + "."):
-                    business_modules.add(alias.name)
         elif isinstance(node, ast.ImportFrom):
             mod = node.module or ""
             if node.level > 0:
                 errors.append("禁止相对导入（验题为单文件拷贝，from . / from .. 必失败）")
             elif mod == "tests" or mod.startswith("tests."):
                 errors.append("禁止依赖 tests/ 历史测试模块: from %s import ..." % mod)
-            if mod == business_dir or mod.startswith(business_dir + "."):
-                business_modules.add(mod)
 
     for node in top_tests:
         has_assert = any(
@@ -671,10 +664,6 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
     elif test_count != required_count:
         errors.append("「一题一缺陷、三测同源」：hidden_tests.py 必须恰好包含 %d 个 test_* 函数"
                       "（当前 %d 个），且全部针对同一个缺陷" % (required_count, test_count))
-    if len(business_modules) > 1:
-        warnings.append("测试引用了多个业务模块（%s）——本赛制要求每次出题只引入一个缺陷，"
-                        "三个用例测同一问题；请确认不是把多个不相关问题塞进了同一道题"
-                        % ", ".join(sorted(business_modules)))
     return {"ok": not errors, "errors": errors, "warnings": warnings,
             "test_count": test_count}
 
@@ -682,7 +671,8 @@ def lint_hidden_test(py_path: str | Path, required_count: Optional[int] = None) 
 def read_current_prompt() -> Dict:
     """读取当前需求（next_prompt.md）全文，供 Web/CLI 展示与复制。
 
-    返回 {ok, name, content, message}。MOCK 演练模式下 current_prompt_file
+    返回 {ok, name, content, path, message}；path 为需求文件的绝对路径（供前端
+    交接条展示与复制），无真实文件时为 None。MOCK 演练模式下 current_prompt_file
     为 "mock://round_N" 标记，返回占位文本（演练不产生真实需求文件）。
     """
     cfg = load_config()
@@ -693,19 +683,24 @@ def read_current_prompt() -> Dict:
         if prompt_path.is_file():
             return {"ok": True, "name": "next_prompt.md（手动自证）",
                     "content": prompt_path.read_text(encoding="utf-8"),
+                    "path": str(prompt_path),
                     "message": ""}
     name = state.get("current_prompt_file")
     if not name:
-        return {"ok": True, "name": None, "content": None, "message": "等待首轮需求"}
+        return {"ok": True, "name": None, "content": None, "path": None,
+                "message": "等待首轮需求"}
     if isinstance(name, str) and name.startswith(MOCK_PROMPT_PREFIX):
         return {"ok": True, "name": name,
                 "content": "（MOCK 演练）这是演练占位需求——真实模式下，此处显示当前选手"
                            "要实现的 next_prompt.md 全文。",
+                "path": name if name.startswith("mock://") else "mock://prompts/" + name,
                 "message": ""}
     p = resolve_path(cfg.get("prompts_dir", "prompts")) / name
     if not p.exists():
-        return {"ok": True, "name": name, "content": None, "message": "需求文件缺失: %s" % name}
-    return {"ok": True, "name": name, "content": p.read_text(encoding="utf-8"), "message": ""}
+        return {"ok": True, "name": name, "content": None, "path": None,
+                "message": "需求文件缺失: %s" % name}
+    return {"ok": True, "name": name, "content": p.read_text(encoding="utf-8"),
+            "path": str(p), "message": ""}
 
 
 def set_initial_prompt(prompt_file: str) -> Dict:

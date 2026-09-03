@@ -240,7 +240,7 @@ async def api_restore():
 
 @app.post("/api/inject-rules")
 async def api_inject_rules():
-    """手动把测试规范写入 arena_repo/TESTING_GUIDELINES.md（幂等）。
+    """手动注入 arena_repo/AGENTS.md 项目指令与 TESTING_GUIDELINES.md（幂等）。
 
     平时无需调用：arena 就绪时 /api/state 的刷新钩子已自动注入并自愈
     （文件被删会在下次刷新补回）。此接口供人类立即重注入时使用。

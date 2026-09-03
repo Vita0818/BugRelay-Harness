@@ -11,5 +11,5 @@
   "prompts_dir": "prompts",
   "backups_dir": "backups",
   "inbox_dir": "inbox",
-  "mock": false
+  "mock": true
 }

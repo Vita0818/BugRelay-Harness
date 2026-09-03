@@ -13,7 +13,7 @@ Hermes Agent 必须遵守以下约束：
 1. `BR-Harness` 与 `BR-Code` 必须是两个互相独立的 Git 仓库；两者可以并排，但不能嵌套。
 2. 不得把 `BR-Code` 复制进 `BR-Harness`，也不得把 Harness 复制进 Code。
 3. 部署期间不得修改 `BR-Code/src/` 和 `BR-Code/tests/`。Harness 启动后在 Code 根目录
-   注入或更新 `TESTING_GUIDELINES.md` 属于预期行为。
+   注入或更新 `AGENTS.md` 托管区块和 `TESTING_GUIDELINES.md` 属于预期行为。
 4. 不得恢复或重新加入 `verifier_model`、OpenAI API、Ollama、`httpx` 或任何自动 Agent 调用。
 5. 不得修改网页主体结构、CSS、阶段布局或增加新 UI 元素。部署任务只做环境配置和启动。
 6. 只运行一个 Uvicorn 进程，不得使用 `--workers`，不得创建多实例负载均衡。
@@ -291,8 +291,9 @@ mock = false
 arena_ready = true
 ```
 
-`/api/state` 的启动刷新可能在 BR-Code 根目录创建或更新 `TESTING_GUIDELINES.md`；这是
-Harness 的规范注入机制，不是对业务代码或历史测试的修改。
+`/api/state` 的启动刷新可能在 BR-Code 根目录创建或更新 `AGENTS.md` 和
+`TESTING_GUIDELINES.md`；这是 Harness 的 OpenCode 项目指令/测试规范注入机制，不是对
+业务代码或历史测试的修改。`AGENTS.md` 中 arena 自有内容必须保留。
 
 再次确认 Code 的业务与测试没有被部署步骤改动：
 
@@ -402,7 +403,7 @@ Hermes 完成部署后，应向操作者报告且仅报告事实：
 9. VM 内健康检查结果；
 10. 浏览器访问 URL；
 11. UFW/NAT 设置（若有）；
-12. 是否创建/更新了 BR-Code 根目录的 `TESTING_GUIDELINES.md`；
+12. 是否创建/更新了 BR-Code 根目录的 `AGENTS.md` 托管区块与 `TESTING_GUIDELINES.md`；
 13. 明确确认 `BR-Code/src/` 与 `BR-Code/tests/` 未被部署步骤修改；
 14. 任何未解决警告或需要操作者决定的事项。
 

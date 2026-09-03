@@ -100,7 +100,7 @@ def cmd_status(_args) -> int:
         table.add_row("arena_ready", "就绪" if state.get("arena_ready") else "未就绪（arena_repo 不存在或不是 git 仓库）")
         table.add_row("MOCK 演练", "开启（随机模拟全绿/全红：不跑 pytest / 不碰 arena_repo）"
                       if judge.is_mock_enabled() else "关闭（真实评测）")
-        table.add_row("规范注入", ("已注入（TESTING_GUIDELINES.md 在仓库中）" if state.get("rules_injected")
+        table.add_row("规范注入", ("已注入（AGENTS.md + TESTING_GUIDELINES.md）" if state.get("rules_injected")
                                    else ("未注入（arena 就绪后自动补）" if state.get("arena_ready") else "未注入（arena 未就绪）")))
         table.add_row("inbox 材料", "、".join(inbox_parts) or "（空）")
         table.add_row("当前需求", str(state.get("current_prompt_file")) or "（等待首轮需求）")
@@ -199,7 +199,7 @@ def cmd_set_first_prompt(args) -> int:
 
 
 def cmd_inject_rules(_args) -> int:
-    """手动注入测试规范到 arena_repo/TESTING_GUIDELINES.md（等同 /api/inject-rules）。
+    """手动注入 OpenCode 项目指令和测试规范（等同 /api/inject-rules）。
 
     平时无需执行：CLI 每次运行前的 _bootstrap 刷新钩子已自动注入并自愈。
     """
@@ -332,7 +332,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_draw.set_defaults(func=cmd_draw)
 
     p_rules = sub.add_parser(
-        "inject-rules", help="手动注入测试规范到 arena_repo/TESTING_GUIDELINES.md（幂等；平时自动注入）")
+        "inject-rules", help="手动注入 AGENTS.md 项目指令与 TESTING_GUIDELINES.md（幂等）")
     p_rules.set_defaults(func=cmd_inject_rules)
 
     return parser

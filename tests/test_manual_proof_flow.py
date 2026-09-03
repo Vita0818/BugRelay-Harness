@@ -104,6 +104,21 @@ def test_hidden_test_linter_rejects_non_collectable_fixture_and_skip_cases(tmp_p
     assert result["errors"]
 
 
+def test_hidden_test_linter_allows_one_problem_across_multiple_modules(tmp_path):
+    path = tmp_path / "hidden_tests.py"
+    path.write_text(
+        "from src.parser import parse\n"
+        "from src.storage import Store\n\n"
+        "def test_main_path(): assert parse(Store()) is not None\n"
+        "def test_boundary(): assert parse(Store()) is not False\n"
+        "def test_regression(): assert Store is not None\n",
+        encoding="utf-8",
+    )
+    result = judge.lint_hidden_test(path, required_count=3)
+    assert result["ok"]
+    assert result["warnings"] == []
+
+
 def _install_manual_flow_fakes(tmp_path, monkeypatch, run_results):
     harness_root = tmp_path / "harness"
     arena = tmp_path / "arena"

@@ -230,7 +230,7 @@ python -m cli.bugrelay web                             # 启动 Web
 | POST | `/api/restore` | 还原最近备份 |
 | POST | `/api/set-model` | 批量更新选手实际模型 `{"updates": {三字码: 新模型名}}`（模型迭代；arena 未就绪也可用） |
 | POST | `/api/draw` | 顺序抽签：随机重排全部选手接力顺序并重置比赛进度（保留选手表与首轮需求） |
-| POST | `/api/inject-rules` | 手动把测试规范写入 arena_repo/TESTING_GUIDELINES.md（幂等；平时自动注入自愈） |
+| POST | `/api/inject-rules` | 注入 OpenCode `AGENTS.md` 强制指令和 `TESTING_GUIDELINES.md` 详细规范（幂等、自愈） |
 
 安全约定：**前端任何接口都不返回 hidden_tests/ 内容**；测试结果只显示总结果与
 通过数/总数，测试函数名、断言内容、diff 一律不展示（pytest 原始输出只留在服务端终端供人类排障）。
@@ -288,10 +288,14 @@ harness_repo/
 
 出题人（AI Agent 或真人）以及首轮人类提交的 `hidden_tests.py` 必须满足以下规范。
 
-**规范的注入**：arena_repo 接入框架（`arena_ready` 刷新为就绪）的那一刻，本规范会自动写入
-`arena_repo/TESTING_GUIDELINES.md`——选手 Agent 打开仓库即可看到（面向选手改写的版本，
-含答题规则/出题规则/数据内联示例/交付物文件名约定）；文件被删后下次刷新自动补回
-（自愈）。需要立即重写：Web「重注入规范 / Rules」按钮、CLI `inject-rules`、
+**项目指令的注入**：arena_repo 接入框架（`arena_ready` 刷新为就绪）时自动写入两层规则：
+
+- `arena_repo/AGENTS.md`：OpenCode 自动加载的项目级强制指令，强调一次只修/出一个问题，
+  以及新题必须由全新的同模型 Agent 在看不到隐藏测试时完成自证，防止过难或含糊；
+- `arena_repo/TESTING_GUIDELINES.md`：详细测试格式、RED/GREEN、数据内联和交付契约。
+
+`AGENTS.md` 使用 Harness 托管区块，保留 arena 已有的其它项目说明；任一规则缺失或过期，
+下次刷新都会自愈。需要立即重写：Web「重注入规范 / Rules」、CLI `inject-rules`、
 `POST /api/inject-rules`（均幂等）。
 
 违反阻断级规则的文件在导入时（Web 上传 / CLI load-proposal / inbox 拾取）会被静态闸门
@@ -311,7 +315,8 @@ harness_repo/
    `hidden_tests.py` 必须恰好包含 **3 个** `test_*` 函数（数量可经
    `config.json` 的 `proposal_test_count` 调整，默认 3），全部针对同一个缺陷，
    从不同角度夹住它——推荐分工：主路径复现 / 边界邻近值 / 回归防护（防特判
-   糊弄）。禁止在一个文件里测多个互不相关问题（引用多个业务模块会被警告）。
+   糊弄）。一个问题可以很复杂、横跨多个文件或模块；模块数量不是判定标准。禁止的是
+   在同一道题里捆绑多个互不相关的验收目标。
 
 ### 9.2 稳定性要求（强烈建议，无法静态校验）
 

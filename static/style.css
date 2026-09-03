@@ -12,7 +12,7 @@
   --hover: #fafafa;
   --pass: #15803d;      /* PASS 绿 */
   --fail: #dc2626;      /* FAIL 红 */
-  --card-radius: 1rem;
+  --chip-radius: 1rem;  /* 圆角只用于聚光块与按钮，不用于任何容器 */
   --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -24,8 +24,8 @@ body {
   overflow: hidden;                      /* 单屏铁律：整页不滚动 */
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px;
+  gap: 14px;
+  padding: 20px 30px;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--mono);
@@ -44,14 +44,15 @@ b.bad { color: var(--fail); font-weight: 700; }
 .is-hidden { display: none !important; }
 .hidden { display: none !important; }
 
-/* ---------- 顶栏：赛况横幅（两行：第一行赛况，第二行当前选手独占） ---------- */
+/* ---------- 顶栏：赛况横幅（第一行赛况，第二行当前选手，第三行战况带） ----------
+   纯平无卡片：内容直接落在白底上，靠留白与字号分层；高度紧凑，把屏幕让给阶段带。 */
 .topbar {
+  flex: none;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 30px 22px;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
+  gap: 14px;
+  padding: 0 6px;
+  min-width: 0;
   overflow: hidden;
 }
 .topbar-row1 {
@@ -61,7 +62,7 @@ b.bad { color: var(--fail); font-weight: 700; }
   white-space: nowrap;
   overflow: hidden;
 }
-.brand { font-weight: 800; letter-spacing: 0.12em; font-size: 34px; color: var(--foreground); line-height: 1; }
+.brand { font-weight: 800; letter-spacing: 0.12em; font-size: clamp(22px, 1.8vw, 34px); color: var(--foreground); line-height: 1; }
 
 /* MOCK 演练徽章：虚线边框提示"这是模拟"，开启时黑底反白 */
 .mock-badge {
@@ -73,10 +74,10 @@ b.bad { color: var(--fail); font-weight: 700; }
   letter-spacing: 0.08em;
 }
 .mock-badge.is-hidden { display: none; }
-.hero-round { color: var(--muted); font-size: 17px; }
-.hero-round b { font-size: 24px; }
+.hero-round { color: var(--muted); font-size: clamp(14px, 1.1vw, 18px); }
+.hero-round b { font-size: clamp(18px, 1.5vw, 26px); }
 .hero-player {
-  font-size: 56px;
+  font-size: clamp(30px, 2.6vw, 46px);
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1;
@@ -84,53 +85,105 @@ b.bad { color: var(--fail); font-weight: 700; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.meta { color: var(--muted); font-size: 16px; }
+.meta { color: var(--muted); font-size: clamp(13px, 1.05vw, 17px); }
 .meta b { font-weight: 700; }
 
-/* ---------- 主画面：横向 1×4 阶段带（简洁：无卡片框） ----------
+/* ---------- 接力战况带：32 位选手全员列出（4 行 × 8 列网格） ----------
+   纯平：三字码 + 结果（+N 绿 / ✕ 红）· 当前选手细线胶囊 · 未上场灰码；
+   悬停显示模型原名。 */
+.relay-strip {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);  /* 等宽 8 列，每码在列内居中，两侧自然留白 */
+  gap: clamp(7px, 1vh, 13px) clamp(8px, 1vw, 18px);
+  font-size: clamp(14px, 1.3vw, 20px);
+}
+/* 所有 chip 统一 padding + 透明 border，保证文字对齐；
+   now 只改 border 颜色，不影响布局偏移 */
+.relay-chip { color: var(--muted); font-weight: 700; cursor: default; white-space: nowrap; text-align: center; justify-self: center; border: 1.5px solid transparent; border-radius: 999px; padding: 2px 12px; }
+.relay-chip .rc-sub { display: inline-block; min-width: 2.6ch; margin-left: 4px; font-size: 0.8em; font-weight: 700; color: var(--faint); text-align: left; }
+.relay-chip.okc { color: var(--foreground); }
+.relay-chip.okc .rc-sub { color: var(--pass); }
+.relay-chip.out { color: var(--faint); }
+.relay-chip.out .rc-sub { color: var(--fail); }
+.relay-chip.wait { color: var(--faint); font-weight: 600; }
+/* 当前选手：只改 border 颜色 */
+.relay-chip.now {
+  border-color: var(--foreground);
+  color: var(--foreground);
+}
+
+/* ---------- 主画面：横向 1×4 阶段带（录屏主角） ----------
    编号 = 时间顺序：1 作答 → 2 判定 → 3 出题 → 4 自证，从左到右接力。
-   中间压矮，把高度让给顶栏/底栏。 */
+   纯平无卡片：默认纯文字落在白底上；仅当前/评测中节点背黑色圆角聚光块。
+   每根柱内部分两层：上层 大序号+阶段名（主角），下层 执行者+状态（细分）；
+   柱间箭头表达接力方向，走过的箭头变黑。 */
 .arena {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   min-height: 0;
 }
 .track {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: 1fr;
-  gap: 14px;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+  column-gap: clamp(10px, 1.3vw, 20px);
 }
+.tarrow {
+  align-self: center;
+  font-size: clamp(20px, 2vw, 34px);
+  font-weight: 800;
+  color: var(--line);
+  transition: color 0.3s;
+  user-select: none;
+}
+.tarrow.passed { color: var(--foreground); }
 .tnode {
   position: relative;
   min-width: 0;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: clamp(22px, 4.5vh, 48px);
   text-align: center;
   border: none;
-  border-radius: 0;
-  padding: 10px 6px;
+  border-radius: var(--chip-radius);
+  padding: clamp(18px, 3vh, 34px) 14px;
   background: transparent;
   transition: background 0.18s, color 0.18s;
 }
-.tnode-name {
-  margin: 0 0 10px;
-  font-size: 44px;
+.tnode-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, 1.2vh, 14px);
+}
+.tnode-no {
+  font-size: clamp(36px, 4vw, 64px);
   font-weight: 800;
-  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--faint);
+}
+.tnode-name {
+  font-size: clamp(17px, 1.8vw, 30px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
   color: var(--muted);
   line-height: 1;
   white-space: nowrap;
 }
+.tnode-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
 .tnode-who {
-  font-size: 15px;
+  font-size: clamp(13px, 1.35vw, 21px);
   font-weight: 700;
   color: var(--muted);
   white-space: nowrap;
@@ -139,67 +192,85 @@ b.bad { color: var(--fail); font-weight: 700; }
   max-width: 100%;
 }
 .tnode-state {
-  margin-top: 10px;
-  padding-top: 8px;
+  margin-top: clamp(8px, 1.4vh, 14px);
+  padding-top: clamp(7px, 1.2vh, 12px);
   border-top: 1px solid var(--line);
-  font-size: 13px;
+  font-size: clamp(12px, 1.15vw, 17px);
   color: var(--faint);
-  width: 82%;
+  width: 84%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 /* 当前节点：黑底聚光灯 */
-.tnode.active { background: var(--foreground); border-color: var(--foreground); }
+.tnode.active { background: var(--foreground); }
+.tnode.active .tnode-no { color: var(--background); }
 .tnode.active .tnode-name { color: var(--background); }
 .tnode.active .tnode-who { color: #e5e5e5; }
 .tnode.active .tnode-state { color: #a3a3a3; border-top-color: rgba(255, 255, 255, 0.22); }
 
-/* 已完成节点：实心描边 + 勾 */
-.tnode.done { border-color: var(--foreground); }
+/* 已完成节点：勾内联在阶段名后 */
+.tnode.done .tnode-no { color: var(--muted); }
 .tnode.done .tnode-name { color: var(--foreground); }
 .tnode.done .tnode-who { color: var(--foreground); }
-.tnode.done::after {
+.tnode.done .tnode-name::after {
   content: "✓";
-  position: absolute;
-  top: 10px; right: 14px;
-  font-size: 16px;
+  margin-left: 0.35em;
+  font-size: 0.6em;
   font-weight: 800;
   color: var(--foreground);
 }
 
 /* 评测运行中：黑底呼吸 */
-.tnode.ongoing { background: var(--foreground); border-color: var(--foreground); animation: node-breathe 1.1s ease-in-out infinite; }
+.tnode.ongoing { background: var(--foreground); animation: node-breathe 1.1s ease-in-out infinite; }
+.tnode.ongoing .tnode-no { color: var(--background); }
 .tnode.ongoing .tnode-name { color: var(--background); }
 .tnode.ongoing .tnode-who { color: #e5e5e5; }
-.tnode.ongoing .tnode-state { color: #a3a3a3; border-top-color: rgba(255, 255, 255, 0.22); }
-.tnode.ongoing .tnode-state { color: var(--background); font-weight: 800; }
+.tnode.ongoing .tnode-state { color: var(--background); font-weight: 800; border-top-color: rgba(255, 255, 255, 0.22); }
 .tnode.ongoing .tnode-state::after { content: " 评测中…"; color: #a3a3a3; font-weight: 400; }
 @keyframes node-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.8; }
 }
 
-/* ---------- 提示词条：当前要喂给选手的提示词（主画面常驻，一键复制） ---------- */
-.prompt-strip {
+/* ---------- 底栏：交接操作台（提示词信息 + 复制路径 + 复制提示词 + NEXT）。
+   纯平无卡片：内容直接落在白底上；① 作答 / ④ 自证（等人工把提示词粘贴
+   进 OpenCode 的两个时刻）路径行出现，文字加粗强调。判定结果只在全屏
+   红绿定格展示。 ---------- */
+.console {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  min-width: 0;
+}
+.console-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prompt-row-main {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 10px 18px;
-  border-top: 1px solid var(--line);
   white-space: nowrap;
   overflow: hidden;
 }
 .prompt-strip-label {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 800;
   letter-spacing: 0.12em;
   color: var(--muted);
   flex: none;
 }
 .prompt-strip-name {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 700;
   color: var(--foreground);
   flex: none;
@@ -212,48 +283,57 @@ b.bad { color: var(--fail); font-weight: 700; }
   flex: 1;
   min-width: 0;
 }
+.handoff-hint {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #a3a3a3;
+}
 
-/* ---------- 底栏：判定结果（常驻）+ 主操作（占高） ---------- */
-.console {
-  display: flex;
-  align-items: stretch;
-  gap: 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  padding: 24px 30px;
-}
-.result-zone {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 9px;
-}
-.result-line {
+/* 路径行：仅在交接时刻出现，纯平细分隔线 */
+.prompt-row-path {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
+  padding: 8px 2px 0;
+  border-top: 1px dashed var(--line);
   white-space: nowrap;
   overflow: hidden;
 }
-.result-label {
-  font-size: 16px;
+.path-tag {
+  flex: none;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px 8px;
 }
-.result-counts { color: var(--muted); font-size: 17px; }
-.count { color: var(--muted); font-size: 15px; margin-left: 4px; }
-.result-msg {
-  font-size: 16px;
-  color: var(--muted);
-  white-space: nowrap;
+.path-value {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.result-msg.ok { color: var(--pass); font-weight: 700; }
-.result-msg.err { color: var(--fail); font-weight: 700; }
+
+/* 交接时刻强调：纯平，靠加粗/变色提示，不用底色块 */
+.console.handoff .handoff-hint { color: var(--foreground); font-weight: 800; font-size: 14px; }
+.console.handoff .prompt-strip-label { color: var(--foreground); }
+.console.handoff .path-value { font-size: 14.5px; color: var(--foreground); }
+
+/* 交接操作键：比普通小按钮大一号（录屏操作主体），但不是卡片 */
+.btn.copy-prompt-btn, .btn.copy-path-btn {
+  flex: none;
+  font-size: 15px;
+  font-weight: 800;
+  padding: 9px 22px;
+  border-radius: 8px;
+}
 
 .badge {
   display: inline-block;
@@ -264,7 +344,7 @@ b.bad { color: var(--fail); font-weight: 700; }
   border: 1px solid var(--line);
   color: var(--muted);
 }
-.badge.big { font-size: 27px; padding: 3px 20px; border-radius: 8px; }
+.badge.big { font-size: clamp(18px, 1.6vw, 27px); padding: 3px 18px; border-radius: 8px; }
 .badge.PASS { border-color: var(--pass); color: var(--pass); font-weight: 800; }
 .badge.FAIL { background: var(--fail); color: var(--background); border-color: var(--fail); }
 
@@ -274,8 +354,7 @@ b.bad { color: var(--fail); font-weight: 700; }
   gap: 14px;
   white-space: nowrap;
 }
-#action-msgs { min-width: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
-.op-msg { font-size: 12px; color: var(--muted); }
+.op-msg { font-size: 12px; color: var(--muted); }  /* 仅调试抽屉使用 */
 .op-msg.ok { color: var(--pass); font-weight: 700; }
 .op-msg.err { color: var(--fail); font-weight: 700; }
 
@@ -297,7 +376,7 @@ b.bad { color: var(--fail); font-weight: 700; }
 .btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .btn.primary { background: var(--foreground); color: var(--background); }
 .btn.primary:hover:not(:disabled) { opacity: 0.86; }
-.btn.big { font-size: 26px; padding: 22px 84px; font-weight: 800; border-radius: 12px; letter-spacing: 0.08em; }
+.btn.big { font-size: clamp(18px, 1.6vw, 26px); padding: 14px 64px; font-weight: 800; border-radius: 12px; letter-spacing: 0.08em; }
 .btn.small { padding: 3px 9px; font-size: 11px; }
 .btn.ghost { border-color: var(--line); color: var(--muted); }
 .btn.ghost:hover:not(:disabled) { color: var(--foreground); border-color: var(--foreground); background: var(--background); }
@@ -315,7 +394,8 @@ b.bad { color: var(--fail); font-weight: 700; }
 .mini:hover { border-color: var(--foreground); }
 .mini.dark { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
 
-/* ---------- 判定全屏定格（录屏高潮镜头：整屏色块 PASS 绿 / FAIL 红） ---------- */
+/* ---------- 判定全屏定格（录屏高潮镜头：整屏色块 PASS 绿 / FAIL 红） ----------
+   字号上限收紧，保证 label/word/detail/sub 四行在常规视口内完整居中不裁切。 */
 .verdict {
   position: fixed;
   inset: 0;
@@ -326,32 +406,49 @@ b.bad { color: var(--fail); font-weight: 700; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 26px;
+  padding: 6vh 6vw;
   cursor: pointer;
   animation: verdict-in 0.28s ease;
 }
 .verdict.pass { background: var(--pass); color: #ffffff; }
 .verdict.fail { background: var(--fail); color: #ffffff; }
+.verdict:not(.pass):not(.fail) .verdict-label { color: var(--muted); }
+.verdict:not(.pass):not(.fail) .verdict-word,
+.verdict:not(.pass):not(.fail) .verdict-detail { color: var(--foreground); }
+.verdict:not(.pass):not(.fail) .verdict-sub { color: var(--muted); }
 @keyframes verdict-in {
   0% { opacity: 0; transform: scale(1.03); }
   100% { opacity: 1; transform: scale(1); }
 }
 .verdict-label {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.35em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.75);
 }
 .verdict-word {
-  font-size: clamp(8rem, 30vw, 24rem);
+  /* 字号同时受宽高约束：矮视口下随高度收缩，四行内容永不溢出裁切 */
+  font-size: clamp(4rem, min(20vw, 24vh), 15rem);
   font-weight: 800;
   letter-spacing: 0.04em;
   line-height: 1;
   color: #ffffff;
 }
-.verdict-detail { font-size: 30px; font-weight: 700; color: #ffffff; }
-.verdict-sub { font-size: 21px; font-weight: 600; color: rgba(255, 255, 255, 0.85); }
+.verdict-detail {
+  font-size: clamp(20px, min(2.6vw, 3.2vh), 32px);
+  font-weight: 700;
+  color: #ffffff;
+}
+.verdict-sub {
+  font-size: clamp(15px, min(1.8vw, 2.2vh), 22px);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  max-width: 78vw;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 
 /* ---------- 调试抽屉（录屏外） ---------- */
 .debug-drawer {
@@ -500,7 +597,7 @@ b.bad { color: var(--fail); font-weight: 700; }
 /* ---------- 浮层横幅 ---------- */
 .banner {
   position: fixed;
-  top: 130px;              /* 顶栏之下，避免遮挡赛况横幅 */
+  top: min(30vh, 300px);   /* 顶栏之下，避免遮挡赛况横幅 */
   left: 50%;
   transform: translateX(-50%);
   z-index: 65;
@@ -538,7 +635,7 @@ b.bad { color: var(--fail); font-weight: 700; }
   overflow: auto;
   background: var(--background);
   border: 1px solid var(--line);
-  border-radius: var(--card-radius);
+  border-radius: var(--chip-radius);
   box-shadow: 0 24px 60px rgba(10, 10, 10, 0.18);
   padding: 1.2rem 1.3rem 1.3rem;
 }

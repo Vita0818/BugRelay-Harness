@@ -27,6 +27,8 @@ const state = {
   editingModels: false, // 模型编辑模式：轮询期间不重绘选手席，避免 3 秒清空输入
   modelOrig: {},        // 编辑模式的原始模型名 {三字码: model}，保存时求差集
   bannerHoldUntil: 0,   // 临时结果横幅（抽签/还原）的保持截止时间，超时后由轮询清除
+  lastPrompt: null,     // 最近一次 /api/prompt 返回（含需求全文与绝对路径）
+  handoffMode: null,    // 交接时刻：answer=① 作答喂提示词；proof=④ 手动自证喂新需求
 };
 
 /* ---------------- 通用请求 ---------------- */
@@ -42,6 +44,7 @@ async function api(url, options = {}) {
 }
 
 function setMsg(el, text, cls) {
+  if (!el) { return; }  // 主界面不再显示操作日志，元素可能不存在
   el.textContent = text;
   el.className = "op-msg" + (cls ? " " + cls : "");
 }
@@ -101,18 +104,15 @@ function renderState(st, inbox, currentStep, mockOn) {
   mockBtn.classList.toggle("ghost", !state.mock);
 
   $("st-round").textContent = st.round;
-  // 当前选手：三字码 + 总称（悬停显示实际模型）
+  // 当前选手：三字码 + 实际模型名（原名直出，不用总称指代）
   const players = st.players || {};
   const cur = st.current_player;
   const curInfo = cur && players[cur];
   const playerEl = $("st-player");
-  playerEl.textContent = cur ? (curInfo ? cur + " · " + curInfo.name : cur) : "–";
-  if (curInfo && curInfo.model) {
-    playerEl.title = curInfo.model;
-  } else {
-    playerEl.removeAttribute("title");
-  }
+  playerEl.textContent = cur ? (curInfo ? cur + " · " + (curInfo.model || curInfo.name) : cur) : "–";
+  playerEl.removeAttribute("title");
   renderRoster(st);
+  renderRelay(st);
   renderStepper(st, currentStep);
 
   // 存活/淘汰：人数为主（32 人名单太长），完整名单放悬停提示
@@ -123,7 +123,7 @@ function renderState(st, inbox, currentStep, mockOn) {
   survEl.title = surv.join(" · ");
   survEl.className = surv.length ? "ok" : "bad";
   const elimEl = $("st-eliminated");
-  elimEl.textContent = elim.length ? elim.length + " · " + elim.join(" ") : "0";
+  elimEl.textContent = String(elim.length);   // 人数即可；明细在接力战况带
   elimEl.className = elim.length ? "bad" : "";
 
   const arenaEl = $("st-arena");
@@ -147,22 +147,7 @@ function renderState(st, inbox, currentStep, mockOn) {
     hideBanner();
   }
 
-  // 判定结果面板（常驻）：总判定 + 历史/隐藏两行计数 + 一句结果说明
-  const sum = st.last_test_summary;
-  const overall = $("t-overall");
-  if (sum && sum.overall) {
-    overall.textContent = sum.overall;
-    overall.className = "badge big " + sum.overall;
-  } else {
-    overall.textContent = "–";
-    overall.className = "badge big";
-  }
-  renderTestRow("t-history", sum && sum.history);
-  renderTestRow("t-hidden", sum && sum.hidden);
-  const rmsg = $("result-msg");
-  rmsg.textContent = st.last_action_msg || "暂无判定";
-  rmsg.className = "result-msg" +
-    (st.last_result === "PASS" ? " ok" : (st.last_result === "FAIL" ? " err" : ""));
+  // 判定结果不再常驻底栏：②/④ 评测结果只在全屏红绿定格展示（judgeAnswer/judgeProposal）
 
   // 主按钮「NEXT」：answering 验收答题；proposing 第一次全红、手动自证后第二次全绿。
   const finished = st.status === "finished";
@@ -198,21 +183,105 @@ function renderState(st, inbox, currentStep, mockOn) {
   } else if (inboxProposal && st.phase === "proposing" && st.arena_ready) {
     setMsg($("proposal-msg"), "检测到 inbox/ 出题材料，点击 NEXT 自动导入并运行全红判定", "ok");
   }
+
+  renderHandoff();
 }
 
-function renderTestRow(id, part) {
-  const badge = $(id);
-  const count = $(id + "-count");
-  if (!part || !part.total) {
-    badge.textContent = "–";
-    badge.className = "badge";
-    count.textContent = "";
-    return;
+/* ---------------- 接力战况带：32 位选手全员列出 ----------------
+   按抽签顺序列出全部三字码：已上场的带结果（+N 绿 / ✕ 红），
+   当前选手用细线胶囊标出，未上场的灰码待命。悬停显示模型原名。 */
+function renderRelay(st) {
+  const box = $("relay-strip");
+  if (!box) { return; }
+  const order = st.order || [];
+  const players = st.players || {};
+  const elim = new Set(st.eliminated || []);
+  const scores = st.scores || {};
+  const cur = st.current_player;
+  const curIdx = order.indexOf(cur);
+  box.textContent = "";
+  order.forEach((p, i) => {
+    const chip = document.createElement("span");
+    chip.className = "relay-chip";
+    const info = players[p];
+    if (info) { chip.title = p + " · " + (info.model || info.name || ""); }
+    // 后缀槽位：每码都有，无分数的留空占位，保证所有码等宽对齐
+    const sub = document.createElement("span");
+    sub.className = "rc-sub";
+    if (p === cur && st.status !== "finished") {
+      chip.classList.add("now");            // 细线胶囊标出接力棒位置
+    } else if (curIdx >= 0 && i > curIdx) {
+      chip.classList.add("wait");           // 未上场
+    } else if (elim.has(p)) {
+      chip.classList.add("out");
+      sub.textContent = (scores[p] || 0) > 0 ? (scores[p] + "✕") : "✕";  // 1✕ = 通过1次后淘汰
+    } else {
+      chip.classList.add("okc");
+      sub.textContent = "+" + (scores[p] || 0);
+    }
+    chip.appendChild(document.createTextNode(p));
+    chip.appendChild(sub);
+    box.appendChild(chip);
+  });
+}
+
+/* ---------------- 交接操作台（底栏）：人工拷贝提示词进 OpenCode 的两个时刻 ----------------
+   ① 作答（answering）：路径=需求文件，复制全文 → 粘贴到当前选手的 OpenCode；
+   ④ 自证（awaiting_manual_proof）：路径=自证目录，复制新需求 → 粘贴到该目录
+   打开的全新同模型 OpenCode。这两个时刻整条黑底聚光，复制路径/复制提示词/NEXT 常驻。 */
+function renderHandoff() {
+  const st = state.lastState;
+  if (!st) { return; }
+  const bar = $("console");
+  const label = $("prompt-strip-label");
+  const hint = $("handoff-hint");
+  const copyBtn = $("btn-copy-prompt-main");
+  const copyPathBtn = $("btn-copy-path");
+  const pathRow = $("prompt-row-path");
+  const pathTag = $("path-tag");
+  const pathValue = $("path-value");
+
+  const proof = st.pending_proof || null;
+  const awaitingProof = !!(proof && proof.stage === "awaiting_manual_proof");
+  const running = !!state.runningStep;
+  const promptData = state.lastPrompt;
+  const hasPrompt = !!(promptData && promptData.ok && promptData.content);
+
+  let mode = null;
+  if (!running && st.status !== "finished") {
+    if (awaitingProof) {
+      mode = "proof";
+    } else if (st.phase === "answering" && hasPrompt) {
+      mode = "answer";
+    }
   }
-  const ok = part.passed >= part.total;
-  badge.textContent = ok ? "PASS" : "FAIL";
-  badge.className = "badge " + (ok ? "PASS" : "FAIL");
-  count.textContent = "通过 " + part.passed + " / " + part.total;
+  state.handoffMode = mode;
+
+  bar.classList.toggle("handoff", !!mode);
+  hint.classList.toggle("is-hidden", !mode);
+  if (mode === "proof") {
+    label.textContent = "④ 自证交接";
+    hint.textContent = "在此目录打开全新同模型 OpenCode → 粘贴新需求 → 完成后点 NEXT";
+    copyBtn.textContent = "复制新需求全文";
+    pathTag.textContent = "自证目录";
+    pathValue.textContent = proof.repo || "";
+    pathValue.title = pathValue.textContent;
+    pathRow.classList.toggle("is-hidden", !pathValue.textContent);
+  } else if (mode === "answer") {
+    label.textContent = "① 作答交接";
+    hint.textContent = "复制需求全文 → 粘贴到当前选手的 OpenCode";
+    copyBtn.textContent = "复制需求全文";
+    pathTag.textContent = "需求文件";
+    pathValue.textContent = promptData.path || "";
+    pathValue.title = pathValue.textContent;
+    pathRow.classList.toggle("is-hidden", !pathValue.textContent);
+  } else {
+    label.textContent = "当前提示词";
+    copyBtn.textContent = "复制提示词";
+    pathRow.classList.add("is-hidden");
+  }
+  // 复制路径按钮：只在有路径可复制（交接时刻）时出现
+  copyPathBtn.classList.toggle("is-hidden", !pathValue.textContent || pathRow.classList.contains("is-hidden"));
 }
 
 /* ---------------- 文件树与文件预览 ---------------- */
@@ -344,7 +413,7 @@ function renderRoster(st) {
       head.appendChild(el("span", { class: "chip-score" }, String(scores[code])));
     }
     chip.appendChild(head);
-    chip.appendChild(el("div", { class: "chip-name" }, info.name || ""));
+    chip.appendChild(el("div", { class: "chip-name" }, info.model || info.name || ""));
     if (info.model) {
       chip.title = code + " — " + info.model + (eliminated.indexOf(code) !== -1 ? " （已淘汰）" : "");
     }
@@ -486,6 +555,12 @@ function renderStepper(st, currentStep) {
       el.className = "tnode";
     }
   }
+  // 柱间箭头：接力已走过的（当前阶段之前）变黑，其余保持浅灰
+  const curStage = running || waiting;
+  for (let i = 1; i <= 3; i++) {
+    const a = $("arrow-" + i);
+    if (a) { a.classList.toggle("passed", st.status !== "finished" && i < curStage); }
+  }
 }
 
 /* ---------------- 需求与日志 ---------------- */
@@ -497,12 +572,13 @@ async function loadPrompt() {
     box.textContent = "读取失败: " + (data.error || "");
     return;
   }
+  state.lastPrompt = data;
   if (data.content == null) {
     box.textContent = data.message || "等待首轮需求";
   } else {
     box.textContent = data.content;
   }
-  // 主画面提示词条：文件名 + 首行摘要（全文在调试抽屉，复制用全文）
+  // 主画面交接条：文件名 + 首行摘要（全文在调试抽屉，复制用全文）
   const nameEl = $("prompt-strip-name");
   const bodyEl = $("prompt-strip-body");
   if (data.content) {
@@ -513,6 +589,7 @@ async function loadPrompt() {
     nameEl.textContent = "等待首轮需求";
     bodyEl.textContent = data.message || "";
   }
+  renderHandoff();  // 路径/文案可能随需求切换（如全红后切到自证需求）
 }
 
 async function loadLog() {
@@ -644,16 +721,22 @@ async function judgeProposal() {
   const data = await api("/api/judge-proposal", { method: "POST" });
   state.runningStep = null;
   if (data.ok) {
-    const redGatePassed = data.gate === "RED" && data.result === "PASS";
-    showVerdict(
-      redGatePassed ? "RED" : data.result,
-      (data.history && data.hidden)
-        ? "历史 " + data.history.passed + "/" + data.history.total +
-          " · 隐藏 " + data.hidden.passed + "/" + data.hidden.total
-        : "",
-      data.message || "",
-      redGatePassed ? "FAIL" : null
-    );
+    const counts = (data.history && data.hidden)
+      ? "历史 " + data.history.passed + "/" + data.history.total +
+        " · 隐藏 " + data.hidden.passed + "/" + data.hidden.total
+      : "";
+    if (data.gate === "RED" && data.result === "PASS") {
+      // 全红通过只是④的中间步骤：不放全屏（观众看到红屏会以为出错），
+      // 横幅提示 + 底栏交接操作台黑底引导手动自证
+      showBanner(data.message || "全红验证通过；请手动完成自证，完成后再次点击 NEXT", "info");
+      state.bannerHoldUntil = Date.now() + 10000;  // 短暂保持，随后交给交接操作台
+    } else if (data.gate === "GREEN" && data.result === "PASS") {
+      // ④ 完整通过 = 新测试全红 ✓ + 自证全绿 ✓，才放绿 PASS
+      showVerdict("PASS", "新测试全红 ✓ · 自证全绿 ✓",
+        (counts ? counts + " — " : "") + (data.message || ""));
+    } else {
+      showVerdict(data.result, counts, data.message || "");
+    }
     setMsg(msg, data.message || data.result, data.result === "PASS" ? "ok" : "err");
   } else {
     setMsg(msg, "未执行: " + (data.error || data.reason || "未知错误"), "err");
@@ -673,30 +756,79 @@ async function advanceFlow() {
 
 /* ---------------- 提示词：复制给选手 Agent / 首轮需求导入 ---------------- */
 
+function promptCopyBaseText(btn) {
+  // 主画面按钮随交接时刻换文案；调试抽屉里的按钮固定叫「复制提示词」
+  if (btn === $("btn-copy-prompt-main")) {
+    return state.handoffMode === "proof" ? "复制新需求全文"
+      : (state.handoffMode === "answer" ? "复制需求全文" : "复制提示词");
+  }
+  return "复制提示词";
+}
+
+/* 真复制文本到剪贴板：clipboard API（安全上下文）→ execCommand 退路
+   （局域网 IP 等非安全上下文仍可真复制），两层都失败才返回 false。 */
+async function copyTextToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* API 缺失/焦点丢失/权限拒绝 → 走退路 */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+/* 最后退路：选中文本让用户 Ctrl+C（仅在两层复制都失败时） */
+function selectTextIn(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 async function copyPrompt(btn) {
   btn = btn || $("btn-copy-prompt");
+  const base = promptCopyBaseText(btn);
   const box = $("prompt");
   const text = box.textContent || "";
-  if (!text || text === "等待首轮需求" || text.indexOf("读取失败") === 0 ||
-      text.indexOf("（MOCK 演练）") === 0) {
+  if (!text || text === "等待首轮需求" || text.indexOf("读取失败") === 0) {
     btn.textContent = "暂无需求";
-    setTimeout(() => { btn.textContent = "复制提示词"; }, 1600);
+    setTimeout(() => { btn.textContent = base; }, 1600);
     return;
   }
-  try {
-    await navigator.clipboard.writeText(text);
+  if (await copyTextToClipboard(text)) {
     btn.textContent = "已复制";
-  } catch (e) {
-    // 剪贴板 API 不可用（如非安全上下文）时退回选中文本
-    const range = document.createRange();
-    range.selectNodeContents(box);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
+  } else {
+    selectTextIn(box);
     btn.textContent = "已选中，请 Ctrl+C";
   }
-  setTimeout(() => { btn.textContent = "复制提示词"; }, 1600);
+  setTimeout(() => { btn.textContent = base; }, 1600);
   loadPrompt(); // 顺带刷新
+}
+
+async function copyPath(btn) {
+  const text = ($("path-value").textContent || "").trim();
+  if (!text) { return; }
+  if (await copyTextToClipboard(text)) {
+    btn.textContent = "已复制";
+  } else {
+    selectTextIn($("path-value"));
+    btn.textContent = "已选中，请 Ctrl+C";
+  }
+  setTimeout(() => { btn.textContent = "复制路径"; }, 1600);
 }
 
 async function uploadFirstPrompt() {
@@ -792,7 +924,7 @@ function runDrawAnimation(order, players) {
       chip.appendChild(el("span", { class: "pos" }, String(idx + 1)));
       chip.appendChild(document.createTextNode(" " + code));
       const info = players[code] || {};
-      chip.title = (info.name || "") + (info.model ? "（" + info.model + "）" : "");
+      chip.title = (info.model || info.name || "");
       result.appendChild(chip);
     }
 
@@ -832,7 +964,7 @@ function runDrawAnimation(order, players) {
         clearInterval(rollTimer);
         roll.classList.remove("rolling");
         roll.textContent = code;
-        rollName.textContent = (players[code] || {}).name || "";
+        rollName.textContent = (players[code] || {}).model || "";
         roll.classList.add("locked");
         lockChip(code, idx);
         i += 1;
@@ -902,6 +1034,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("btn-upload-proposal").addEventListener("click", uploadProposal);
   $("btn-copy-prompt").addEventListener("click", () => copyPrompt($("btn-copy-prompt")));
   $("btn-copy-prompt-main").addEventListener("click", () => copyPrompt($("btn-copy-prompt-main")));
+  $("btn-copy-path").addEventListener("click", () => copyPath($("btn-copy-path")));
   $("btn-upload-first-prompt").addEventListener("click", uploadFirstPrompt);
   $("btn-edit-models").addEventListener("click", enterModelEdit);
   $("btn-models-save").addEventListener("click", saveModelEdits);
