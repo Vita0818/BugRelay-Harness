@@ -311,3 +311,101 @@ def test_answer_does_not_apply_material_when_pre_backup_fails(tmp_path, monkeypa
     assert not result["ok"]
     assert "备份失败" in result["reason"]
     assert not applied["called"]
+
+
+def test_restore_hidden_test_entry(tmp_path, monkeypatch):
+    """入口恢复助手：仅凭 state 记录的转正卷子从 tests/ 复制；无记录或档案缺失时不恢复。"""
+    arena = tmp_path / "arena"
+    (arena / "tests").mkdir(parents=True)
+    (arena / "tests" / "test_round_1_SOL.py").write_text(
+        "def test_a(): assert True\n", encoding="utf-8")
+    hidden_dir = tmp_path / "hidden"
+    monkeypatch.setattr(judge, "arena_path", lambda: arena)
+    monkeypatch.setattr(judge, "resolve_path", lambda value: Path(value))
+    monkeypatch.setattr(judge, "log_event", lambda *a, **k: None)
+    cfg = {"history_tests_dir": "tests", "hidden_tests_dir": str(hidden_dir)}
+
+    assert not judge._restore_hidden_test_entry({}, cfg)                       # 无记录
+    assert not judge._restore_hidden_test_entry({"last_promoted_test": "nope.py"}, cfg)  # 档案缺失
+    assert not judge._restore_hidden_test_entry(
+        {"last_promoted_test": "../escape.py"}, cfg)                           # 拒绝路径穿越
+    assert not (hidden_dir / "hidden_tests.py").exists()
+
+    assert judge._restore_hidden_test_entry({"last_promoted_test": "test_round_1_SOL.py"}, cfg)
+    assert (hidden_dir / "hidden_tests.py").read_text(encoding="utf-8") == \
+        "def test_a(): assert True\n"
+
+
+def test_verify_answer_restores_consumed_hidden_tests(tmp_path, monkeypatch):
+    """出题失败后下一位验收答题：hidden_tests/ 已被上轮消费为空，
+    框架应自动把上轮转正进 tests/ 的卷子复制回入口继续验收，而不是卡死报缺。"""
+    arena = tmp_path / "arena"
+    (arena / "src").mkdir(parents=True)
+    tests_dir = arena / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_round_1_SOL.py").write_text(
+        "def test_a(): assert True\n"
+        "def test_b(): assert True\n"
+        "def test_c(): assert True\n",
+        encoding="utf-8",
+    )
+    hidden_dir = tmp_path / "hidden"
+    hidden_dir.mkdir()  # 空目录：上轮答题通过后入口已被消费
+    answer_dir = tmp_path / "answer"
+    answer_dir.mkdir()
+    (answer_dir / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    state = {
+        "status": "running",
+        "phase": "answering",
+        "current_player": "GRK",
+        "round": 1,
+        "pending_answer": str(answer_dir),
+        "pending_proof": None,
+        "last_promoted_test": "test_round_1_SOL.py",
+        "scores": {"GRK": 0},
+    }
+
+    def save_state(value):
+        state.clear()
+        state.update(copy.deepcopy(value))
+
+    monkeypatch.setattr(judge, "load_config", lambda: {
+        "mock": False,
+        "hidden_tests_dir": str(hidden_dir),
+        "history_tests_dir": "tests",
+        "business_dir": "src",
+        "proposal_test_count": 3,
+    })
+    monkeypatch.setattr(judge, "load_state", lambda: copy.deepcopy(state))
+    monkeypatch.setattr(judge, "save_state", save_state)
+    monkeypatch.setattr(judge, "arena_path", lambda: arena)
+    monkeypatch.setattr(judge, "resolve_path", lambda value: Path(value))
+    monkeypatch.setattr(judge, "log_event", lambda *a, **k: None)
+    monkeypatch.setattr(judge.repo_ops, "is_arena_ready", lambda: True)
+    monkeypatch.setattr(judge, "backup_arena", lambda tag: "bid-" + tag)
+    monkeypatch.setattr(judge, "apply_business_files",
+                        lambda p: {"ok": True, "applied": 1, "warning": ""})
+    monkeypatch.setattr(judge.repo_ops, "tests_status_map",
+                        lambda ignore_names=None: {"tests/test_round_1_SOL.py": "file:x"})
+
+    def fake_run_pytest(repo, extra_test_file=None, hidden_name=None):
+        # extra_test_file 必须真实存在：入口恢复失败时 verify_answer 会在之前直接返回
+        dest = tests_dir / hidden_name
+        shutil.copy2(extra_test_file, dest)
+        return {
+            "exit_code": 0, "passed": 3, "total": 3, "ok": True, "log_text": "",
+            "history": {"passed": 0, "failed": 0, "errors": 0, "skipped": 0, "total": 0},
+            "hidden": {"passed": 3, "failed": 0, "errors": 0, "skipped": 0, "total": 3},
+            "hidden_dest": str(dest), "stats_reliable": True,
+        }
+
+    monkeypatch.setattr(judge, "run_pytest", fake_run_pytest)
+
+    result = judge.verify_answer()
+    assert result["ok"] and result["result"] == "PASS", result
+    # 新卷子转正落进 tests/，入口被再次消费，指针更新为本轮文件名
+    assert (tests_dir / "test_round_1_GRK.py").is_file()
+    assert not (hidden_dir / "hidden_tests.py").exists()
+    assert state["phase"] == "proposing"
+    assert state["last_promoted_test"] == "test_round_1_GRK.py"

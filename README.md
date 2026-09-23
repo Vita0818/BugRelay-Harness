@@ -398,8 +398,9 @@ def test_other_keys_unaffected():  # 回归防护：防特判糊弄
   `PYTHONPATH`；若历史测试仍找不到被测代码，检查 arena_repo 的测试导入方式与
   `pytest_args` 配置。
 - **首轮验收报"本轮隐藏测试缺失"**：需人工把该轮 `hidden_tests.py` 放入 `hidden_tests/`。
-  另注：若某选手出题失败被淘汰，本轮新需求被拒收，下一棒将面对旧需求继续（此时
-  `hidden_tests/` 可能为空，同样需人工补充后再验收）。
+  另注：若某选手出题失败被淘汰，本轮新需求被拒收，下一棒将面对旧需求继续；此时上一轮
+  答题转正的卷子就是本轮该考的卷子，框架会自动从 `tests/` 恢复验收入口（记录在 state
+  的 `last_promoted_test`），无需人工补充。仅当该转正卷子也被外部删除时，才需人工放置。
 - **backups/ 增长**：每次验收都会全量备份 arena_repo；可手动删除旧备份目录并同步
   从 `backups/index.json` 移除对应登记项。
 

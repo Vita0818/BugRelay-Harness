@@ -1049,6 +1049,31 @@ def _mock_verify_proposal() -> Dict:
 # 答题验收（不调用任何模型）
 # ---------------------------------------------------------------------------
 
+def _restore_hidden_test_entry(state: Dict, cfg: Dict) -> bool:
+    """hidden_tests/hidden_tests.py 缺失时，从 tests/ 里最近转正的卷子恢复入口。
+
+    背景：本轮卷子在答题全绿时转正进 tests/ 并被从 hidden_tests/ 消费掉；若随后
+    出题失败，下一位仍要面对同一份需求验收，袋子却是空的。转正卷子的内容就是本轮
+    该考的那份，复制回入口即可——tests/ 只读取不写入，不违反历史测试锁定。
+    恢复成功返回 True；无记录或档案缺失返回 False（保留人工兜底）。
+    """
+    name = state.get("last_promoted_test")
+    if not name or Path(str(name)).name != str(name):
+        return False
+    src = arena_path() / str(cfg.get("history_tests_dir", "tests")) / str(name)
+    if not src.is_file():
+        return False
+    hidden_dir = resolve_path(cfg.get("hidden_tests_dir", "hidden_tests"))
+    try:
+        hidden_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, hidden_dir / "hidden_tests.py")
+    except Exception as e:
+        log_event("restore-hidden", "恢复本轮隐藏测试入口失败: %s" % e, result="WARN")
+        return False
+    log_event("restore-hidden", "已从 tests/%s 恢复本轮隐藏测试入口（上轮答题转正卷）" % name)
+    return True
+
+
 def verify_answer() -> Dict:
     """验收当前选手的答题（规范【6】）。
 
@@ -1092,7 +1117,9 @@ def verify_answer() -> Dict:
 
         hidden_dir = resolve_path(cfg.get("hidden_tests_dir", "hidden_tests"))
         hidden_src = hidden_dir / "hidden_tests.py"
-        if not hidden_src.exists():
+        # 袋子为空时先试自动恢复：上轮答题转正的卷子就是本轮该考的卷子
+        # （出题失败打回的场景）；恢复不了才需要人工放置。
+        if not hidden_src.exists() and not _restore_hidden_test_entry(state, cfg):
             return {"ok": False, "result": None,
                     "reason": "本轮隐藏测试缺失：请人工将本轮 hidden_tests.py 放入 hidden_tests/ 后重试"}
 
@@ -1203,6 +1230,9 @@ def verify_answer() -> Dict:
         counts = _summary_counts(res)
         state2 = load_state()
         state2["phase"] = "proposing"  # 轮次不变，等待该选手出题
+        # 记录转正卷子文件名：若随后出题失败，下一位仍面对同一需求，
+        # 验收时用它把卷子从 tests/ 恢复回 hidden_tests/ 入口
+        state2["last_promoted_test"] = final_path.name
         state2["scores"] = dict(state2.get("scores", {}))
         state2["scores"][player] = state2["scores"].get(player, 0) + 1
         state2["last_result"] = "PASS"
@@ -1475,6 +1505,9 @@ def verify_proposal() -> Dict:
         current = load_state()
         _cleanup_proof(current.get("pending_proof"))
         current["current_prompt_file"] = prompt_name
+        # 新需求与新卷子已就位，旧转正指针对应的需求已过期；
+        # 不清掉的话，下一轮入口意外缺失时会把旧卷子错误恢复回来。
+        current["last_promoted_test"] = None
         current["round"] = new_round
         _advance(current, eliminate_current=False)
         current["phase"] = "answering"

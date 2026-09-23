@@ -71,6 +71,10 @@ def default_state() -> Dict[str, Any]:
         # 全红通过后创建的手动自证工作区。Harness 不启动 Agent；人类在 repo 路径中
         # 手动打开 OpenCode，完成后再次推进，由 Harness 运行全绿判定。
         "pending_proof": None,
+        # 最近一次答题全绿时转正进 arena tests/ 的卷子文件名（test_round_R_X.py）。
+        # 若随后出题失败，下一位仍面对同一需求，但 hidden_tests/ 入口已在转正时被消费；
+        # 验收时凭此字段把卷子从 tests/ 复制回 hidden_tests/，避免流程卡死。
+        "last_promoted_test": None,
         "last_test_summary": None,   # 最近一次评测的两行计数（仅计数，不含测试内容）
         "last_action_msg": None,     # 最近一次操作的简短人类可读说明
     }
