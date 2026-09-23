@@ -4,7 +4,7 @@
     "SDT",
     "STP",
     "HYN",
-    "GPN",
+    "GPL",
     "GML",
     "GPT",
     "LCT",
@@ -18,7 +18,7 @@
     "QWF",
     "GLF",
     "MSG",
-    "GPM",
+    "GPR",
     "NMU",
     "DSP",
     "GMN",
@@ -30,7 +30,7 @@
     "OPS",
     "MSS",
     "MMP",
-    "GPP",
+    "GPA",
     "MNM",
     "GLM"
   ],
@@ -38,7 +38,7 @@
     "SDT",
     "STP",
     "HYN",
-    "GPN",
+    "GPL",
     "GML",
     "GPT",
     "LCT",
@@ -52,7 +52,7 @@
     "QWF",
     "GLF",
     "MSG",
-    "GPM",
+    "GPR",
     "NMU",
     "DSP",
     "GMN",
@@ -64,7 +64,7 @@
     "OPS",
     "MSS",
     "MMP",
-    "GPP",
+    "GPA",
     "MNM",
     "GLM"
   ],
@@ -78,7 +78,7 @@
     "SDT": 2,
     "STP": 0,
     "HYN": 0,
-    "GPN": 0,
+    "GPL": 0,
     "GML": 0,
     "GPT": 0,
     "LCT": 0,
@@ -92,7 +92,7 @@
     "QWF": 0,
     "GLF": 0,
     "MSG": 0,
-    "GPM": 0,
+    "GPR": 0,
     "NMU": 0,
     "DSP": 0,
     "GMN": 0,
@@ -104,7 +104,7 @@
     "OPS": 0,
     "MSS": 0,
     "MMP": 0,
-    "GPP": 0,
+    "GPA": 0,
     "MNM": 0,
     "GLM": 0
   },
@@ -148,16 +148,16 @@
       "name": "GPT",
       "model": "GPT-5.6 Sol"
     },
-    "GPP": {
-      "name": "GPT Pro",
-      "model": "GPT-5.6 Sol Pro"
+    "GPA": {
+      "name": "GPT Astra",
+      "model": "GPT-6 Astra"
     },
-    "GPM": {
-      "name": "GPT Mini",
+    "GPR": {
+      "name": "GPT Terra",
       "model": "GPT-5.6 Terra"
     },
-    "GPN": {
-      "name": "GPT Nano",
+    "GPL": {
+      "name": "GPT Luna",
       "model": "GPT-5.6 Luna"
     },
     "GMN": {
@@ -166,7 +166,7 @@
     },
     "GMF": {
       "name": "Gemini Flash",
-      "model": "Gemini 3.7 Flash"
+      "model": "Gemini 3.8 Flash"
     },
     "GML": {
       "name": "Gemini Flash Lite",
@@ -178,7 +178,7 @@
     },
     "MSS": {
       "name": "Muse Spark",
-      "model": "Muse Spark 1.2"
+      "model": "Muse Spark 1.3"
     },
     "MSG": {
       "name": "Muse Glimmer",
